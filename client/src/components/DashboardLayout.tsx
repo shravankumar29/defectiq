@@ -21,15 +21,37 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Bot,
+  Layers,
+  LayoutDashboard,
+  LineChart,
+  ListTree,
+  LogOut,
+  PanelLeft,
+  Table2,
+  Waves,
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "Overview", path: "/" },
+  { icon: Activity, label: "Pattern Discovery", path: "/patterns" },
+  { icon: BarChart3, label: "Machine Analysis", path: "/machines" },
+  { icon: Layers, label: "Shift Analysis", path: "/shifts" },
+  { icon: Table2, label: "Batch Analysis", path: "/batches" },
+  { icon: ListTree, label: "Defect Investigation", path: "/investigation" },
+  { icon: Waves, label: "Anomaly Detection", path: "/anomalies" },
+  { icon: AlertTriangle, label: "Recommendations", path: "/recommendations" },
+  { icon: Bot, label: "AI Copilot", path: "/copilot" },
+  { icon: LineChart, label: "Clustering", path: "/clustering" },
+  { icon: ListTree, label: "Reports", path: "/reports" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -168,8 +190,11 @@ function DashboardLayoutContent({
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold tracking-tight truncate">
-                    Navigation
+                  <span className="font-bold tracking-tight truncate text-lg">
+                    Defect<span className="text-primary">IQ</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                    ANALYTICS
                   </span>
                 </div>
               ) : null}
