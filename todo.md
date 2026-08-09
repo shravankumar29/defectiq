@@ -46,3 +46,20 @@
 - [x] Vitest tests for engine relay routes
 - [x] Python unit tests for pattern engine, change detection, contribution (smoke suite)
 - [x] Visual verification via screenshots
+## Cinematic Landing Page
+- [x] DefectIQScene reusable placeholder component (large, full-width, parallax/scroll-interactive props, replaceable later)
+- [x] Landing theme: near-black bg, white text, subtle cyan/blue/violet accents, thin glowing outlines, particle layer
+- [x] Minimal floating nav: DEFECTIQ left, Product/Intelligence/Data/How It Works center, Import Data right
+- [x] Full-screen hero: layered typography (eyebrow, "Manufacturing Data. Decoded.", supporting line), Import CSV/Excel primary, Analyze Demo secondary, "CSV + XLSX supported"
+- [x] Problem section: "Factories Generate More Data Than They Can Interpret."
+- [x] Intelligence section: "Find The Patterns Humans Miss." + MACHINE+SHIFT+BATCH+PROCESS → DEFECT PATTERN flow
+- [x] Pattern insight overlay: M04 + Shift C + Temp >78°C / Surface Defects / 8.4% defect rate / 4.0× baseline
+- [x] Evidence section: "Evidence Before Assumptions." + stats + "Association detected. Causation is not established."
+- [x] Action section: "Turn Patterns Into Action." with recommended investigations
+- [x] AI Copilot floating interaction: question + grounded answer integrated in environment
+- [x] Final CTA: "Your Factory Data Already Contains The Clues." + buttons
+- [x] Upload dialog: drag-drop CSV/XLSX, Browse Files, Use Demo Dataset, DATASET READY stats, Analyze Dataset
+- [x] Scroll-driven scene behavior (placeholder responds to scroll position via props)
+- [x] Responsive: desktop immersive, tablet depth, mobile simplified
+- [x] Route: landing at "/" (public), app at /app (dashboard behind analysis gating)
+- [x] Visual verification + checkpoint

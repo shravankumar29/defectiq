@@ -15,6 +15,10 @@ type AnalysisCtx = {
   generate: () => Promise<void>;
   uploadCsv: (csvBase64: string) => Promise<{ rows: number; defect_rate_pct: number }>;
   downloadReport: (format: "pdf" | "csv") => Promise<void>;
+  copilot: {
+    ask: (question: string) => Promise<{ answer: string; sources_used?: string[] }>;
+    busy: boolean;
+  };
 };
 
 const Ctx = createContext<AnalysisCtx | null>(null);
@@ -37,6 +41,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       await utils.engine.results.invalidate();
     },
   });
+
+  const copilotMut = trpc.engine.copilot.useMutation();
 
   const uploadMut = trpc.engine.upload.useMutation({
     onSuccess: async () => {
@@ -86,8 +92,18 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return res;
       },
       downloadReport,
+      copilot: {
+        ask: async (question: string) => {
+          const res = (await copilotMut.mutateAsync({ question })) as any;
+          return {
+            answer: String(res?.answer ?? "No answer available."),
+            sources_used: Array.isArray(res?.sources_used) ? res.sources_used : undefined,
+          };
+        },
+        busy: copilotMut.isPending,
+      },
     }),
-    [status, statusQ, resultsQ, generateMut, uploadMut, downloadReport, utils]
+    [status, statusQ, resultsQ, generateMut, uploadMut, copilotMut, downloadReport, utils]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

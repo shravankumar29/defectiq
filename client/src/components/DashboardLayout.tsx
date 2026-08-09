@@ -41,17 +41,17 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Overview", path: "/" },
-  { icon: Activity, label: "Pattern Discovery", path: "/patterns" },
-  { icon: BarChart3, label: "Machine Analysis", path: "/machines" },
-  { icon: Layers, label: "Shift Analysis", path: "/shifts" },
-  { icon: Table2, label: "Batch Analysis", path: "/batches" },
-  { icon: ListTree, label: "Defect Investigation", path: "/investigation" },
-  { icon: Waves, label: "Anomaly Detection", path: "/anomalies" },
-  { icon: AlertTriangle, label: "Recommendations", path: "/recommendations" },
-  { icon: Bot, label: "AI Copilot", path: "/copilot" },
-  { icon: LineChart, label: "Clustering", path: "/clustering" },
-  { icon: ListTree, label: "Reports", path: "/reports" },
+  { icon: LayoutDashboard, label: "Overview", path: "/app" },
+  { icon: Activity, label: "Pattern Discovery", path: "/app/patterns" },
+  { icon: BarChart3, label: "Machine Analysis", path: "/app/machines" },
+  { icon: Layers, label: "Shift Analysis", path: "/app/shifts" },
+  { icon: Table2, label: "Batch Analysis", path: "/app/batches" },
+  { icon: ListTree, label: "Defect Investigation", path: "/app/investigation" },
+  { icon: Waves, label: "Anomaly Detection", path: "/app/anomalies" },
+  { icon: AlertTriangle, label: "Recommendations", path: "/app/recommendations" },
+  { icon: Bot, label: "AI Copilot", path: "/app/copilot" },
+  { icon: LineChart, label: "Clustering", path: "/app/clustering" },
+  { icon: ListTree, label: "Reports", path: "/app/reports" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

@@ -20,7 +20,7 @@ export default function DataIngestion() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (status?.loaded === true) navigate("/", { replace: true });
+    if (status?.loaded === true) navigate("/app", { replace: true });
   }, [status?.loaded, navigate]);
 
   async function onGenerate() {
