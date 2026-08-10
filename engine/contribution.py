@@ -91,6 +91,8 @@ def contribution_ranking(df, defect_type, min_sample=30):
 def mutual_information_ranking(df, defect_type):
     """Aggregate MI between factor columns and defect/no-defect for the type."""
     d = df.copy()
+    if len(d) < 2:
+        return []
     d["is_target"] = (d["defect_type"] == defect_type).astype(int)
     feat_cols = ["machine_id", "shift", "batch_id"]
     buckets = [c for c in d.columns if c.endswith("_bucket")]
@@ -111,6 +113,13 @@ def mutual_information_ranking(df, defect_type):
 def decision_tree_splits(df, defect_type, max_depth=3):
     """Shallow decision tree as a cross-check; returns top splits with normalized importances (summing to ~100%)."""
     d = df.copy()
+    if len(d) < 2:
+        return {
+            "max_depth": max_depth,
+            "tree_features": [],
+            "feature_importances_pct": {},
+            "top_splits": [],
+        }
     d["is_defective"] = (d["defect_count"] > 0).astype(int)
     d["is_target"] = (d["defect_type"] == defect_type).astype(int)
 
