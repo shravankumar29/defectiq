@@ -15,23 +15,24 @@ NUM_FEATURES = ["defect_rate", "temperature", "pressure", "speed", "vibration", 
 
 
 def _build_features(df, window_days=7):
-    """Batch 7-day windows into feature vectors."""
+    """Batch 7-day windows or machine/shift groups into feature vectors."""
     d = df.copy()
     d["window"] = d["timestamp"].dt.floor(f"{window_days}D")
+    min_g = 1 if len(d) < 50 else 5
     rows = []
     for (w, mach, shift), g in d.groupby(["window", "machine_id", "shift"]):
-        if len(g) < 10:
+        if len(g) < min_g:
             continue
         rows.append({
             "window": str(w.date()),
             "machine_id": mach,
             "shift": shift,
-            "defect_rate": g["defect_count"].sum() / g["units_inspected"].sum(),
-            "temperature": g["temperature"].mean(),
-            "pressure": g["pressure"].mean(),
-            "speed": g["speed"].mean(),
-            "vibration": g["vibration"].mean(),
-            "humidity": g["humidity"].mean(),
+            "defect_rate": g["defect_count"].sum() / max(1, g["units_inspected"].sum()),
+            "temperature": g["temperature"].mean() if "temperature" in g else 25.0,
+            "pressure": g["pressure"].mean() if "pressure" in g else 1.0,
+            "speed": g["speed"].mean() if "speed" in g else 100.0,
+            "vibration": g["vibration"].mean() if "vibration" in g else 0.5,
+            "humidity": g["humidity"].mean() if "humidity" in g else 50.0,
             "units": int(g["units_inspected"].sum()),
             "defects": int(g["defect_count"].sum()),
         })
@@ -40,7 +41,7 @@ def _build_features(df, window_days=7):
 
 def cluster_kmeans(df, k_range=(3, 5)):
     feat = _build_features(df)
-    if len(feat) < 15:
+    if len(feat) < 3:
         return None
     X = feat[NUM_FEATURES].to_numpy()
     scaler = StandardScaler()
@@ -79,7 +80,9 @@ def cluster_kmeans(df, k_range=(3, 5)):
             "name": None,
             "records": int(len(cg)),
             "avg_defect_rate_pct": round(dr * 100, 2),
-            "defect_rate_vs_global": round(dr / gdr, 2) if gdr > 0 else None,
+            "defect_rate_vs_global": round((dr - gdr) * 100, 2),
+            "defect_rate_vs_global_pp": round((dr - gdr) * 100, 2),
+            "defect_rate_vs_global_ratio": round(dr / gdr, 2) if gdr > 0 else None,
             "machines": sorted(cg["machine_id"].value_counts().head(2).index.tolist()),
             "shifts": sorted(cg["shift"].value_counts().head(2).index.tolist()),
             "params": {k: round(float(cg[k].mean()), 1) for k in NUM_FEATURES[1:]},

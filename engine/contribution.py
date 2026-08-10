@@ -109,12 +109,11 @@ def mutual_information_ranking(df, defect_type):
 
 
 def decision_tree_splits(df, defect_type, max_depth=3):
-    """Shallow decision tree as a cross-check; returns top splits in human form."""
+    """Shallow decision tree as a cross-check; returns top splits with normalized importances (summing to ~100%)."""
     d = df.copy()
     d["is_defective"] = (d["defect_count"] > 0).astype(int)
     d["is_target"] = (d["defect_type"] == defect_type).astype(int)
 
-    le_cat = LabelEncoder()
     enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
     cats = ["machine_id", "shift", "batch_id"]
     num = ["temperature", "pressure", "speed", "vibration", "humidity"]
@@ -128,22 +127,61 @@ def decision_tree_splits(df, defect_type, max_depth=3):
 
     features = cats + num
     node_map = {int(i): name for i, name in enumerate(features)}
-    splits = []
+    
+    # Calculate Gini gain per split node
+    total_samples = tree.tree_.weighted_n_node_samples[0]
+    raw_gains = []
+    
     def walk(node):
-        left, right = tree.children_left_[node] if False else (
-            tree.tree_.children_left[node], tree.tree_.children_right[node])
+        left, right = tree.tree_.children_left[node], tree.tree_.children_right[node]
         if left == -1:
             return
         feat = int(tree.tree_.feature[node])
         thr = float(tree.tree_.threshold[node])
-        imp = float(tree.tree_.impurity[node])
-        splits.append({"feature": node_map[feat], "threshold": round(thr, 3), "importance": round(float(tree.tree_.impurity[node] * tree.tree_.weighted_n_node_samples[node]), 3)})
+        
+        n_node = tree.tree_.weighted_n_node_samples[node]
+        imp_node = tree.tree_.impurity[node]
+        n_left = tree.tree_.weighted_n_node_samples[left]
+        imp_left = tree.tree_.impurity[left]
+        n_right = tree.tree_.weighted_n_node_samples[right]
+        imp_right = tree.tree_.impurity[right]
+        
+        gain = (n_node * imp_node - n_left * imp_left - n_right * imp_right) / total_samples
+        raw_gains.append({
+            "node": node,
+            "feature": node_map[feat],
+            "threshold": round(thr, 3),
+            "gain": max(0.0, float(gain))
+        })
         walk(left)
         walk(right)
+
     walk(0)
+    total_gain = sum(g["gain"] for g in raw_gains) if raw_gains else 1.0
+    if total_gain <= 0:
+        total_gain = 1.0
+
+    splits = []
+    for g in raw_gains:
+        importance_pct = round((g["gain"] / total_gain) * 100, 1)
+        splits.append({
+            "feature": g["feature"],
+            "threshold": g["threshold"],
+            "importance": round(g["gain"] / total_gain, 4), # normalized float 0..1
+            "importance_pct": importance_pct # normalized percentage 0..100%
+        })
+
     splits.sort(key=lambda s: -s["importance"])
+
+    # Global feature importances normalized to 100%
+    feature_importances = {
+        feat: round(float(imp) * 100, 1)
+        for feat, imp in zip(features, tree.feature_importances_)
+    }
+
     return {
         "max_depth": max_depth,
         "tree_features": features,
+        "feature_importances_pct": feature_importances,
         "top_splits": splits[:6],
     }

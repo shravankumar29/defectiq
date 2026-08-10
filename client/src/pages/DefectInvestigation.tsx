@@ -152,22 +152,25 @@ function DefectInvestigationPage({ results }: { results: any; uploadCsv?: any })
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-3">
-              {(tree.top_splits as Row[]).slice(0, 6).map((s, i) => (
-                <div key={i} className="rounded-lg border border-border bg-secondary/30 p-3">
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="font-mono text-xs">
-                      Split {i + 1}
-                    </Badge>
-                    <span className="font-data text-xs text-muted-foreground">
-                      importance {(Number(s.importance) * 100).toFixed(1)}%
-                    </span>
+              {(tree.top_splits as Row[]).slice(0, 6).map((s, i) => {
+                const impVal = Number(s.importance_pct ?? (Number(s.importance) * 100));
+                return (
+                  <div key={i} className="rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="font-mono text-xs">
+                        Split {i + 1}
+                      </Badge>
+                      <span className="font-data text-xs text-muted-foreground">
+                        importance {impVal.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="mt-2 font-data text-sm font-medium">{String(s.feature)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      threshold: {Number(s.threshold)?.toFixed(2)}
+                    </p>
                   </div>
-                  <p className="mt-2 font-data text-sm font-medium">{String(s.feature)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    threshold: {Number(s.threshold)?.toFixed(2)}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

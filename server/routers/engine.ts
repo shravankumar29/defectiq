@@ -38,6 +38,20 @@ export const engineRouter = router({
     .input(z.object({ csv_base64: z.string().min(1) }))
     .mutation(({ input }) => relayJson("/upload", { method: "POST", body: { csv_base64: input.csv_base64 } })),
 
+  previewUpload: publicProcedure
+    .input(z.object({ csv_base64: z.string().min(1) }))
+    .mutation(({ input }) => relayJson("/preview_upload", { method: "POST", body: { csv_base64: input.csv_base64 } })),
+
+  confirmUpload: publicProcedure
+    .input(z.object({ csv_base64: z.string().min(1), user_mappings: z.record(z.string(), z.string().nullable()) }))
+    .mutation(({ input }) =>
+      relayJson("/confirm_upload", {
+        method: "POST",
+        body: { csv_base64: input.csv_base64, user_mappings: input.user_mappings },
+      })
+    ),
+
+
   results: publicProcedure.query(() => relayJson("/results")),
 
   copilot: publicProcedure

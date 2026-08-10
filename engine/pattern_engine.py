@@ -117,8 +117,10 @@ def _defect_rates(df, mask):
     return r_in
 
 
-def mine_patterns(df, max_depth=3, min_sample=MIN_SAMPLE, defect_type=None):
-    global_rate = df["defect_count"].sum() / df["units_inspected"].sum()
+def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
+    if min_sample is None:
+        min_sample = max(1, min(MIN_SAMPLE, len(df) // 4))
+    global_rate = df["defect_count"].sum() / max(1, df["units_inspected"].sum())
     cols = _bucket_columns(df)
 
     candidates = []
@@ -186,25 +188,79 @@ def mine_patterns(df, max_depth=3, min_sample=MIN_SAMPLE, defect_type=None):
                 dominant = str(top_dt.index[0])
             else:
                 top_dt = in_g["defect_type"].value_counts().head(3)
-                dominant = str(top_dt.index[0])
                 lift_dt = lift
                 r_in_dt, r_out_dt = r_in, r_out
+                # Determine dominant defect type cleanly
+                no_def_set = {"no defect", "nodefect", "no_defect", "pass", "ok", "good"}
+                real_dt = [k for k in top_dt.index if str(k).lower().strip() not in no_def_set]
+
+                if real_dt:
+                    first_real = str(real_dt[0])
+                    first_cnt = top_dt[first_real]
+                    tot_dt_cnt = int(top_dt.sum())
+                    if (first_cnt / tot_dt_cnt) < 0.45 and len(real_dt) > 1:
+                        dominant = "Multiple defect types observed"
+                    else:
+                        dominant = first_real
+                else:
+                    dominant = str(top_dt.index[0]) if len(top_dt) > 0 else "Multiple defect types observed"
 
             assoc = "High" if (lift_dt >= LIFT_HIGH and p < P_HIGH) else (
                 "Moderate" if (lift_dt >= LIFT_MOD and p < P_SIG) else "Low")
             confidence = "High" if p < P_HIGH else ("Moderate" if p < P_SIG else "Low")
 
+            # Clean formatted description
+            desc_parts = []
+            for f in factors:
+                if "=" in f:
+                    k, v = f.split("=", 1)
+                    if k == "machine_id":
+                        desc_parts.append(f"Machine {v}")
+                    elif k == "shift":
+                        desc_parts.append(f"Shift {v}")
+                    elif k == "batch_id":
+                        desc_parts.append(f"Batch {v}")
+                    elif k.endswith("_bucket"):
+                        param_name = k.replace("_bucket", "").capitalize()
+                        desc_parts.append(f"{param_name} {v}")
+                    else:
+                        desc_parts.append(f"{k.capitalize()} {v}")
+                else:
+                    desc_parts.append(f)
+            desc_str = " + ".join(desc_parts)
+
             windows = df[mask]["timestamp"]
+            ts_min = str(windows.min().date()) if pd.notnull(windows.min()) else "N/A"
+            ts_max = str(windows.max().date()) if pd.notnull(windows.max()) else "N/A"
+
+            def_units_in = int(in_g["units_inspected"].sum())
+            p_rate, p_ci_low, p_ci_high = (0.0, 0.0, 0.0)
+            if def_units_in > 0:
+                p_val_prop = def_in / def_units_in
+                z_val = 1.96
+                denom_val = 1 + (z_val**2) / def_units_in
+                center_val = (p_val_prop + (z_val**2) / (2 * def_units_in)) / denom_val
+                spread_val = (z_val * math.sqrt(max(0.0, p_val_prop * (1 - p_val_prop) + (z_val**2) / (4 * def_units_in))) / math.sqrt(def_units_in)) / denom_val
+                p_ci_low = round(max(0.0, center_val - spread_val) * 100, 2)
+                p_ci_high = round(min(1.0, center_val + spread_val) * 100, 2)
+
             candidates.append({
                 "pattern_id": None,  # assigned after sorting
                 "factors": factors,
-                "description": " + ".join(f.replace("_", " ").title().replace("Machine Id", "Machine").replace("Shift=", "Shift ").replace("Batch Id", "Batch") for f in factors),
+                "factor_count": len(factors),
+                "is_multi_factor": len(factors) >= 2,
+                "description": desc_str,
                 "defect_type": dominant,
                 "top_defect_types": {str(k): int(v) for k, v in top_dt.items()},
                 "slice_rate": round(float(r_in_dt) * 100, 2),
+                "ci_lower": p_ci_low,
+                "ci_upper": p_ci_high,
                 "baseline_rate": round(float(r_out_dt) * 100, 2),
                 "lift": round(float(lift_dt), 2),
-                "sample_size": n,
+                "effect_size_pp": round((float(r_in_dt) - float(r_out_dt)) * 100, 2),
+                "sample_size": def_units_in, # units inspected (n)
+                "record_count": n, # rows in slice
+                "units_inspected": def_units_in,
                 "defective_units": int(def_in),
                 "p_value": round(p, 4),
                 "p_display": "<0.001" if p < 0.001 else f"{p:.3f}",
@@ -213,15 +269,16 @@ def mine_patterns(df, max_depth=3, min_sample=MIN_SAMPLE, defect_type=None):
                 "recurrence": round(rec, 2),
                 "pattern_score": pattern_score,
                 "score_breakdown": {k: round(v * 100) for k, v in scores.items()},
-                "date_range": [str(windows.min().date()), str(windows.max().date())],
+                "score_methodology": "Pattern score combines effect size, sample size, statistical confidence, recurrence and deviation from baseline.",
+                "date_range": [ts_min, ts_max],
                 "affected_batches": sorted(df[mask]["batch_id"].unique().tolist())[:8],
                 "affected_shifts": sorted(df[mask]["shift"].unique().tolist()),
                 "affected_machines": sorted(df[mask]["machine_id"].unique().tolist()),
                 "param_stats": {
                     c[:-7]: {
-                        "mean_in": round(float(df[mask][c[:-7]].mean()), 1),
-                        "mean_out": round(float(df[~mask][c[:-7]].mean()), 1),
-                        "threshold": f"> {df[c[:-7]].quantile(0.9):g}",
+                        "mean_in": round(float(df[mask][c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
+                        "mean_out": round(float(df[~mask][c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
+                        "threshold": f"> {df[c[:-7]].quantile(0.9):g}" if c[:-7] in df.columns else "N/A",
                     }
                     for c in combo if c.endswith("_bucket")
                 },

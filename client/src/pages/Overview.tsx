@@ -33,63 +33,137 @@ const CHART_COLORS = [
 
 type Row = Record<string, unknown>;
 
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Download, FileSpreadsheet, Database } from "lucide-react";
+
 function OverviewPage({ results }: { results: any; uploadCsv?: any }) {
   const { downloadReport } = useAnalysis();
   const kpis = results.kpis as any;
-  const trend = results.trend_series as Row[];
+  const trend = (results.trend_series as Row[]) ?? [];
   const pareto = (results.overview?.pareto as Row[]) ?? [];
   const heatmap = (results.overview?.heatmap as Row[]) ?? [];
   const batchRaw = results.overview?.batch;
   const batch = Array.isArray(batchRaw) ? batchRaw : (batchRaw?.batches ?? []) as Row[];
 
-  const top30 = trend.slice(-30);
+  const daysSpan = kpis?.days_span ?? (kpis?.date_range ? Math.max(1, Math.round((new Date(kpis.date_range[1]).getTime() - new Date(kpis.date_range[0]).getTime()) / 86400000) + 1) : 30);
   const maxShift = (kpis?.highest_risk_shift as string | undefined) ?? "—";
   const maxMachine = (kpis?.highest_risk_machine as string | undefined) ?? "—";
 
+  const isDemo = results.is_demo ?? (results.dataset_source === "demo");
+  const fileName = results.filename ?? (isDemo ? "Synthetic Demo Dataset" : "Uploaded Dataset");
+
   return (
     <div className="p-6 lg:p-8">
-      <PageHeader
-        title="Executive Overview"
-        subtitle="Quality inspection performance across the 90-day window. Click any item to investigate; every finding is an association, not a cause."
-      />
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Executive Overview</h1>
+            <Badge variant={isDemo ? "secondary" : "default"} className="font-mono text-xs">
+              <Database className="mr-1 h-3 w-3" />
+              {isDemo ? "DATA SOURCE: Demo Dataset" : `DATA SOURCE: Uploaded (${fileName})`}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Quality inspection performance across {daysSpan} days ({kpis?.date_range?.[0]} → {kpis?.date_range?.[1]}). Click any item to investigate; every finding is an association, not a cause.
+          </p>
+        </div>
+
+        <Button
+          onClick={() => downloadReport("pdf")}
+          className="inline-flex items-center gap-2 shadow-sm"
+        >
+          <Download className="h-4 w-4" />
+          Export PDF Report
+        </Button>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
-          label="Total inspections"
-          value={kpis?.total_inspections?.toLocaleString()}
-          sub={kpis?.total_defects !== undefined ? `${Number(kpis.total_defects).toLocaleString()} defects recorded` : "records"}
+          label="Inspection Records"
+          value={kpis?.inspection_records?.toLocaleString()}
+          sub="Total CSV/XLSX log rows"
         />
         <KPICard
-          label="Overall defect rate"
+          label="Units Inspected"
+          value={kpis?.units_inspected?.toLocaleString()}
+          sub={`Sample size n = ${kpis?.units_inspected?.toLocaleString()}`}
+        />
+        <KPICard
+          label="Defective Units"
+          value={kpis?.defective_units?.toLocaleString()}
+          sub={`${(((kpis?.defective_units ?? 0) / Math.max(kpis?.units_inspected ?? 1, 1)) * 100).toFixed(2)}% total share`}
+          tone="down"
+        />
+        <KPICard
+          label="Overall Defect Rate"
           value={`${kpis?.defect_rate_pct?.toFixed(2)}%`}
-          sub={kpis?.delta_pp_30d !== undefined && kpis.delta_pp_30d !== null
-            ? `${kpis.delta_pp_30d > 0 ? "+" : ""}${kpis.delta_pp_30d.toFixed(2)} pp vs. prior 30d`
-            : "last 30 days"}
-          tone={kpis?.delta_pp_30d > 0 ? "down" : "up"}
+          sub={
+            <div className="flex flex-col gap-1">
+              <span>
+                {kpis?.has_prior_period && kpis?.delta_pp_30d != null
+                  ? `${kpis.delta_pp_30d > 0 ? "+" : ""}${kpis.delta_pp_30d.toFixed(2)} pp vs prior window`
+                  : "Historical baseline unavailable"}
+              </span>
+              {(kpis?.ci_lower != null && kpis?.ci_upper != null) && (
+                <span className="text-muted-foreground">
+                  95% CI: [{kpis.ci_lower.toFixed(2)}%, {kpis.ci_upper.toFixed(2)}%]
+                </span>
+              )}
+            </div>
+          }
+          tone={kpis?.has_prior_period && kpis?.delta_pp_30d != null ? (kpis.delta_pp_30d > 0 ? "down" : "up") : undefined}
           accent
-        />
-        <KPICard
-          label="Highest-risk machine"
-          value={maxMachine}
-          sub={kpis?.highest_risk_machine_rate_pct !== undefined ? `defect rate ${Number(kpis.highest_risk_machine_rate_pct).toFixed(2)}%` : ""}
-          tone="down"
-        />
-        <KPICard
-          label="Highest-risk shift"
-          value={maxShift}
-          sub={kpis?.highest_risk_shift_rate_pct !== undefined ? `defect rate ${Number(kpis.highest_risk_shift_rate_pct).toFixed(2)}%` : ""}
-          tone="down"
         />
       </div>
 
+      {results.data_quality ? (
+        <Card className="mt-4 border-emerald-500/30 bg-emerald-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Data Quality &amp; Validation Audit
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4 lg:grid-cols-6">
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Records Loaded</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.records_loaded?.toLocaleString()}</p>
+              </div>
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Valid Records</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.valid_records_retained?.toLocaleString()}</p>
+              </div>
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Missing Values</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.missing_values}</p>
+              </div>
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Duplicates Handled</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.duplicate_records}</p>
+              </div>
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Machines Detected</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.detected_machines?.join(", ")}</p>
+              </div>
+              <div className="rounded bg-secondary/40 p-2">
+                <span className="text-muted-foreground">Shifts Detected</span>
+                <p className="mt-0.5 font-data font-semibold">{results.data_quality.detected_shifts?.join(", ")}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <ChartCard
-          title="30-day defect rate trend"
-          sub="Rolling view of the trailing month"
+          title={`${daysSpan}-Day Defect Rate Trend`}
+          sub={`Aggregated trend view across ${daysSpan} days of inspection data`}
           className="lg:col-span-2"
         >
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={top30} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <AreaChart data={trend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
               <defs>
                 <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="oklch(0.68 0.14 220)" stopOpacity={0.35} />
@@ -171,8 +245,8 @@ function OverviewPage({ results }: { results: any; uploadCsv?: any }) {
               {batch.map((b: Row) => (
                 <TableRow key={String(b.batch_id)}>
                   <TableCell className="font-data font-medium">{String(b.batch_id)}</TableCell>
-                  <TableCell className="text-right font-data">{Number(b.units_inspected)?.toLocaleString()}</TableCell>
-                  <TableCell className="text-right font-data">{Number(b.defect_count)?.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-data">{(Number(b.units ?? b.units_inspected) || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-data">{(Number(b.defects ?? b.defect_count) || 0).toLocaleString()}</TableCell>
                   <TableCell className="text-right font-data">
                     {(Number(b.defect_rate_pct) * 1).toFixed(2)}%
                   </TableCell>

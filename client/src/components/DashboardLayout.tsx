@@ -21,11 +21,13 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
+
 import {
   Activity,
   AlertTriangle,
   BarChart3,
   Bot,
+  Globe,
   Layers,
   LayoutDashboard,
   LineChart,
@@ -41,6 +43,7 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
+  { icon: Globe, label: "Landing Page", path: "/" },
   { icon: LayoutDashboard, label: "Overview", path: "/app" },
   { icon: Activity, label: "Pattern Discovery", path: "/app/patterns" },
   { icon: BarChart3, label: "Machine Analysis", path: "/app/machines" },
@@ -78,29 +81,7 @@ export default function DashboardLayout({
     return <DashboardLayoutSkeleton />
   }
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
-            </p>
-          </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <SidebarProvider
@@ -189,7 +170,11 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed ? (
-                <div className="flex items-center gap-2 min-w-0">
+                <div
+                  onClick={() => setLocation("/")}
+                  className="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  title="Return to Landing Page"
+                >
                   <span className="font-bold tracking-tight truncate text-lg">
                     Defect<span className="text-primary">IQ</span>
                   </span>

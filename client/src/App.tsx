@@ -27,26 +27,42 @@ function Router() {
         {/* Public cinematic landing page */}
         <Route path={"/"} component={Landing} />
 
-        {/* App workspace, prefixed so the landing page keeps the root path */}
-        <Route path={"/app"} nest>
-          <AppShell>
-            <Switch>
-              <Route path={"/"} component={Overview} />
-              <Route path={"/ingest"} component={DataIngestion} />
-              <Route path={"/patterns"} component={PatternDiscovery} />
-              <Route path={"/machines"} component={MachineAnalysis} />
-              <Route path={"/shifts"} component={ShiftAnalysis} />
-              <Route path={"/batches"} component={BatchAnalysis} />
-              <Route path={"/investigation"} component={DefectInvestigation} />
-              <Route path={"/anomalies"} component={AnomalyDetection} />
-              <Route path={"/recommendations"} component={Recommendations} />
-              <Route path={"/copilot"} component={Copilot} />
-              <Route path={"/clustering"} component={Clustering} />
-              <Route path={"/reports"} component={Reports} />
-              <Route path={"/404"} component={NotFound} />
-              <Redirect to={"/app"} />
-            </Switch>
-          </AppShell>
+        {/* App workspace sub-pages */}
+        <Route path={"/app"}>
+          <AppShell><Overview /></AppShell>
+        </Route>
+        <Route path={"/app/ingest"}>
+          <AppShell><DataIngestion /></AppShell>
+        </Route>
+        <Route path={"/app/patterns"}>
+          <AppShell><PatternDiscovery /></AppShell>
+        </Route>
+        <Route path={"/app/machines"}>
+          <AppShell><MachineAnalysis /></AppShell>
+        </Route>
+        <Route path={"/app/shifts"}>
+          <AppShell><ShiftAnalysis /></AppShell>
+        </Route>
+        <Route path={"/app/batches"}>
+          <AppShell><BatchAnalysis /></AppShell>
+        </Route>
+        <Route path={"/app/investigation"}>
+          <AppShell><DefectInvestigation /></AppShell>
+        </Route>
+        <Route path={"/app/anomalies"}>
+          <AppShell><AnomalyDetection /></AppShell>
+        </Route>
+        <Route path={"/app/recommendations"}>
+          <AppShell><Recommendations /></AppShell>
+        </Route>
+        <Route path={"/app/copilot"}>
+          <AppShell><Copilot /></AppShell>
+        </Route>
+        <Route path={"/app/clustering"}>
+          <AppShell><Clustering /></AppShell>
+        </Route>
+        <Route path={"/app/reports"}>
+          <AppShell><Reports /></AppShell>
         </Route>
 
         <Route path={"/404"} component={NotFound} />

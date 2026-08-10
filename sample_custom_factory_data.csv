@@ -1,0 +1,7 @@
+date_logged,machine_name,lot_number,shift_code,defect_category,total_defects,units_produced
+2026-08-01,Extruder-X9,LOT-9001,Shift 1,Thermal Burn,12,200
+2026-08-01,LaserCutter-Z1,LOT-9002,Shift 2,Edge Deformity,4,200
+2026-08-02,Extruder-X9,LOT-9001,Shift 1,Thermal Burn,18,200
+2026-08-02,LaserCutter-Z1,LOT-9002,Shift 2,Edge Deformity,6,200
+2026-08-03,Extruder-X9,LOT-9003,Shift 1,Thermal Burn,22,200
+2026-08-03,LaserCutter-Z1,LOT-9004,Shift 2,Edge Deformity,2,200

@@ -95,6 +95,20 @@ export function engineRouter(): express.Router {
     }
   });
 
+  router.get("/report/download/pdf", async (_req, res) => {
+    try {
+      const b64Data = (await relay("/report/pdf")) as string;
+      const cleanB64 = typeof b64Data === "string" ? b64Data.replace(/^"|"$/g, "").trim() : "";
+      const pdfBuffer = Buffer.from(cleanB64, "base64");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'attachment; filename="DefectIQ_Report.pdf"');
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (e) {
+      res.status(500).send("PDF generation failed: " + String(e));
+    }
+  });
+
   router.get("/report/csv", async (_req, res) => {
     try {
       const data = await relay("/report/csv");

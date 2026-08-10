@@ -44,10 +44,11 @@ function BatchAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">Batch</th>
-                <th className="px-3 py-2 text-right">Units</th>
-                <th className="px-3 py-2 text-right">Defects</th>
+                <th className="px-3 py-2 text-right">Units Inspected (n)</th>
+                <th className="px-3 py-2 text-right">Defective Units</th>
                 <th className="px-3 py-2 text-right">Defect rate</th>
                 <th className="px-3 py-2 text-right">vs. baseline</th>
+                <th className="px-3 py-2 text-right">Date Range</th>
                 <th className="px-3 py-2 text-right">Status</th>
               </tr>
             </thead>
@@ -66,6 +67,9 @@ function BatchAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
                     <td className={`px-3 py-2 text-right font-data ${delta > 0 ? "text-red-400" : "text-emerald-400"}`}>
                       {delta > 0 ? "+" : ""}
                       {delta.toFixed(2)} pp
+                    </td>
+                    <td className="px-3 py-2 text-right font-data text-muted-foreground text-xs whitespace-nowrap">
+                      {String(b.date_range ?? "—")}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {Number(b.flagged) === 1 ? (

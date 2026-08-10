@@ -1,4 +1,7 @@
+process.env.NODE_ENV = process.env.NODE_ENV || "development";
+
 import "dotenv/config";
+
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -60,8 +63,8 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 

@@ -64,11 +64,15 @@ function ShiftAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
     }, {}),
   );
 
+  const daysSpan = kpis.days_span ?? 1;
+  const dateRangeStr = kpis.date_range ? `${kpis.date_range[0]} to ${kpis.date_range[1]} (${daysSpan} days)` : "active dataset window";
+  const shiftCiMap = (kpis.shift_ci ?? {}) as Record<string, { ci_lower: number; ci_upper: number }>;
+
   return (
     <div className="p-6 lg:p-8">
       <PageHeader
         title="Shift Analysis"
-        subtitle="Compare defect rates across shifts and review per-shift trends and defect-type mix."
+        subtitle={`Compare defect rates across shifts and review per-shift trends across the dataset window (${dateRangeStr}).`}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -126,12 +130,16 @@ function ShiftAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
         </ChartCard>
       </div>
 
-      <ChartCard title="Shift × defect type mix" sub="Share of each defect type within each shift, ranked by total defects">
+      <ChartCard title="Shift × defect type mix" sub="Units inspected (n), defective units, 95% CI, and defect type distribution per shift">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">Shift</th>
+                <th className="px-3 py-2 text-right">Units (n)</th>
+                <th className="px-3 py-2 text-right">Defects</th>
+                <th className="px-3 py-2 text-right">Defect Rate</th>
+                <th className="px-3 py-2 text-right">95% CI</th>
                 {defectTypes.map((t) => (
                   <th key={t} className="px-3 py-2 text-right">{t}</th>
                 ))}
@@ -141,6 +149,8 @@ function ShiftAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
             <tbody>
               {byShift.map((r) => {
                 const topType = Object.entries(r.top).sort((a, b) => b[1] - a[1])[0];
+                const ci = shiftCiMap[String(r.shift)];
+                const rateVal = (100 * r.defects) / Math.max(r.units, 1);
                 return (
                   <tr key={r.shift} className="border-b border-border/50">
                     <td className="px-3 py-2 font-medium">
@@ -148,6 +158,12 @@ function ShiftAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
                       {r.shift === highest ? (
                         <Badge variant="outline" className="ml-2 border-amber-500/40 text-amber-300">Highest risk</Badge>
                       ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-right font-data">{r.units?.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-data">{r.defects?.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-data">{rateVal.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right font-data text-muted-foreground">
+                      {ci ? `${ci.ci_lower.toFixed(2)}%–${ci.ci_upper.toFixed(2)}%` : "—"}
                     </td>
                     {defectTypes.map((t) => (
                       <td key={t} className="px-3 py-2 text-right font-data">

@@ -71,11 +71,15 @@ function MachineAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
     return { ...v, topType: topType ? topType[0] : "—" };
   });
 
+  const daysSpan = kpis.days_span ?? 1;
+  const dateRangeStr = kpis.date_range ? `${kpis.date_range[0]} to ${kpis.date_range[1]} (${daysSpan} days)` : "active dataset window";
+  const machCiMap = (kpis.machine_ci ?? {}) as Record<string, { ci_lower: number; ci_upper: number }>;
+
   return (
     <div className="p-6 lg:p-8">
       <PageHeader
         title="Machine Analysis"
-        subtitle="Compare defect rates across machines and inspect per-machine trends over the full 90-day window."
+        subtitle={`Compare defect rates across machines and inspect per-machine trends over the dataset window (${dateRangeStr}).`}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -132,35 +136,43 @@ function MachineAnalysisPage({ results }: { results: any; uploadCsv?: any }) {
         </ChartCard>
       </div>
 
-      <ChartCard title="Machine comparison summary" sub="Units, defects, defect rate, and top defect type per machine" className="mt-4">
+      <ChartCard title="Machine comparison summary" sub="Units inspected (sample size n), defective units, defect rate, 95% CI, and top defect type" className="mt-4">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">Machine</th>
-                <th className="px-3 py-2 text-right">Units</th>
-                <th className="px-3 py-2 text-right">Defects</th>
-                <th className="px-3 py-2 text-right">Defect rate</th>
-                <th className="px-3 py-2 text-right">Top defect type</th>
+                <th className="px-3 py-2 text-right">Units Inspected (n)</th>
+                <th className="px-3 py-2 text-right">Defective Units</th>
+                <th className="px-3 py-2 text-right">Defect Rate</th>
+                <th className="px-3 py-2 text-right">95% CI</th>
+                <th className="px-3 py-2 text-right">Top Defect Type</th>
               </tr>
             </thead>
             <tbody>
-              {byMachine.map((m) => (
-                <tr key={m.machine_id} className="border-b border-border/50">
-                  <td className="px-3 py-2 font-data font-medium">{String(m.machine_id)}</td>
-                  <td className="px-3 py-2 text-right font-data">{Number(m.units)?.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right font-data">{Number(m.defects)?.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right font-data">
-                    {((100 * Number(m.defects)) / Number(m.units || 1)).toFixed(2)}%
-                    {String(m.machine_id) === String(highest) ? (
-                      <Badge variant="outline" className="ml-2 border-amber-500/40 text-amber-300">Highest risk</Badge>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Badge variant="outline" className="font-mono">{m.topType}</Badge>
-                  </td>
-                </tr>
-              ))}
+              {byMachine.map((m) => {
+                const ci = machCiMap[String(m.machine_id)];
+                const rateVal = ((100 * Number(m.defects)) / Number(m.units || 1));
+                return (
+                  <tr key={m.machine_id} className="border-b border-border/50">
+                    <td className="px-3 py-2 font-data font-medium">{String(m.machine_id)}</td>
+                    <td className="px-3 py-2 text-right font-data">{Number(m.units)?.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-data">{Number(m.defects)?.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-data">
+                      {rateVal.toFixed(2)}%
+                      {String(m.machine_id) === String(highest) ? (
+                        <Badge variant="outline" className="ml-2 border-amber-500/40 text-amber-300">Highest risk</Badge>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-right font-data text-muted-foreground">
+                      {ci ? `${ci.ci_lower.toFixed(2)}%–${ci.ci_upper.toFixed(2)}%` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Badge variant="outline" className="font-mono">{m.topType}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

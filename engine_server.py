@@ -56,6 +56,12 @@ def generate(req: GenReq):
     return res
 
 
+class ConfirmUploadReq(BaseModel):
+    csv_base64: str
+    user_mappings: dict
+    secret: str
+
+
 @app.post("/upload")
 def upload(req: UploadReq):
     _check(req.secret)
@@ -64,6 +70,27 @@ def upload(req: UploadReq):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return res
+
+
+@app.post("/preview_upload")
+def preview_upload(req: UploadReq):
+    _check(req.secret)
+    try:
+        res = engine_api.preview_uploaded(req.csv_base64)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return res
+
+
+@app.post("/confirm_upload")
+def confirm_upload(req: ConfirmUploadReq):
+    _check(req.secret)
+    try:
+        res = engine_api.confirm_uploaded(req.csv_base64, req.user_mappings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return res
+
 
 
 @app.get("/results")

@@ -37,5 +37,5 @@ export default function withDataset<P extends object>(
     return <Page {...(rest as P)} results={results} uploadCsv={uploadCsv} />;
   }
 
-  return DatasetGuardedPage as unknown as ComponentType<RouteComponentProps<any>>;
+  return DatasetGuardedPage as unknown as ComponentType<any>;
 }

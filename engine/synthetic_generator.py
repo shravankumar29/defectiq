@@ -151,22 +151,58 @@ REQUIRED_COLUMNS = [
 
 
 def validate_and_clean(df: pd.DataFrame):
-    """Validate schema/dtypes, clean, add derived features."""
-    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    """Validate schema/dtypes, clean, add derived features and data quality audit."""
+    df = df.copy()
+
+    records_initial = len(df)
+    cols_initial = len(df.columns)
+    null_count_initial = int(df.isna().sum().sum())
+    dup_count_initial = int(df.duplicated().sum()) if "inspection_id" not in df.columns else int(df.duplicated(subset=["inspection_id"]).sum())
+    invalid_dates_count = int(pd.to_datetime(df["timestamp"], errors="coerce").isna().sum()) if "timestamp" in df.columns else 0
+    invalid_numerics = 0
+    if "defect_count" in df.columns:
+        invalid_numerics += int(pd.to_numeric(df["defect_count"], errors="coerce").isna().sum())
+    if "units_inspected" in df.columns:
+        invalid_numerics += int(pd.to_numeric(df["units_inspected"], errors="coerce").isna().sum())
+
+    # Auto-generate inspection_id if missing
+    if "inspection_id" not in df.columns:
+        df["inspection_id"] = [f"INS-{i+1:06d}" for i in range(len(df))]
+
+    # Fill default process parameters and fields if missing
+    defaults = {
+        "units_inspected": 100,
+        "temperature": 70.0,
+        "pressure": 4.2,
+        "speed": 120.0,
+        "vibration": 0.45,
+        "humidity": 55.0,
+        "shift": "Shift A",
+        "batch_id": "B01",
+        "machine_id": "M01",
+        "defect_type": "Unknown / Unclassified",
+        "defect_count": 0
+    }
+    for col, default_val in defaults.items():
+        if col not in df.columns:
+            df[col] = default_val
+
+    missing = [c for c in ["timestamp", "machine_id", "batch_id", "shift", "defect_type", "defect_count"] if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
-    df = df.copy()
     df["inspection_id"] = df["inspection_id"].astype(str)
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     for c in REQUIRED_COLUMNS[2:7]:
-        df[c] = df[c].astype(str)
+        if c in df.columns:
+            df[c] = df[c].astype(str)
     df["defect_count"] = pd.to_numeric(df["defect_count"], errors="coerce").fillna(0)
-    df["units_inspected"] = pd.to_numeric(df["units_inspected"], errors="coerce")
+    df["units_inspected"] = pd.to_numeric(df["units_inspected"], errors="coerce").fillna(100)
     for c in REQUIRED_COLUMNS[8:]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(defaults.get(c, 0.0))
 
-    df = df.dropna(subset=["timestamp", "machine_id", "units_inspected"])
+    df = df.dropna(subset=["timestamp", "machine_id"])
     df = df[df["units_inspected"] > 0]
     df = df.drop_duplicates(subset="inspection_id", keep="first")
     df["defect_count"] = np.clip(df["defect_count"], 0, df["units_inspected"])
@@ -177,7 +213,25 @@ def validate_and_clean(df: pd.DataFrame):
         if param in df.columns:
             thr = df[param].quantile(0.9)
             df[f"{param}_bucket"] = np.where(df[param] > thr, f">{thr:g}", f"<={thr:g}")
+
+    # Compile data quality audit dictionary
+    df.attrs["data_quality"] = {
+        "records_loaded": records_initial,
+        "valid_records_retained": len(df),
+        "columns_recognized": cols_initial,
+        "missing_values": null_count_initial,
+        "duplicate_records": dup_count_initial,
+        "invalid_dates": invalid_dates_count,
+        "invalid_numeric_values": invalid_numerics,
+        "detected_machines": sorted(df["machine_id"].unique().tolist()),
+        "detected_shifts": sorted(df["shift"].unique().tolist()),
+        "detected_batches": sorted(df["batch_id"].unique().tolist())[:25],
+        "total_batches_count": len(df["batch_id"].unique()),
+        "detected_defect_categories": sorted(df["defect_type"].unique().tolist()),
+    }
+
     return df
+
 
 
 if __name__ == "__main__":

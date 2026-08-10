@@ -19,16 +19,18 @@ import withDataset from "@/components/withDataset";
 type Pattern = Record<string, unknown>;
 
 const SORT_KEYS = [
-  { key: "pattern_score", label: "Score" },
+  { key: "pattern_score", label: "Confidence Score" },
   { key: "lift", label: "Lift" },
-  { key: "p_value", label: "Significance" },
-  { key: "support", label: "Support (n)" },
+  { key: "p_value", label: "p-value" },
+  { key: "sample_size", label: "Support (n)" },
+  { key: "effect_size_pp", label: "Effect Size" },
 ];
 
 function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("pattern_score");
   const [sortAsc, setSortAsc] = useState(false);
+  const [factorTab, setFactorTab] = useState<"all" | "multi" | "single">("multi");
   const [typeFilter, setTypeFilter] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -37,21 +39,26 @@ function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
   const defectTypes = (results.defect_types as string[]) ?? [];
 
   const sorted = useMemo(() => {
-    let list = patterns.filter(
-      (p) =>
-        (typeFilter === "all" || String(p.defect_type ?? "").toLowerCase() === typeFilter) &&
-        (query === "" ||
-          String(p.description ?? p.pattern_text ?? "")
-            .toLowerCase()
-            .includes(query.toLowerCase()))
-    );
+    let list = patterns.filter((p) => {
+      const isMulti = Boolean((p as any).is_multi_factor ?? (Array.isArray((p as any).factors) && (p as any).factors.length >= 2));
+      if (factorTab === "multi" && !isMulti) return false;
+      if (factorTab === "single" && isMulti) return false;
+
+      const dtMatch = typeFilter === "all" || String(p.defect_type ?? "").toLowerCase() === typeFilter.toLowerCase();
+      const queryMatch = query === "" || String(p.description ?? p.pattern_text ?? "").toLowerCase().includes(query.toLowerCase());
+      return dtMatch && queryMatch;
+    });
     list = [...list].sort((a, b) => {
-      const av = Number((a as any)[sortKey] ?? 0);
-      const bv = Number((b as any)[sortKey] ?? 0);
+      let av = Number((a as any)[sortKey] ?? 0);
+      let bv = Number((b as any)[sortKey] ?? 0);
+      if (sortKey === "effect_size_pp") {
+        av = Number((a as any).effect_size_pp ?? (Number(a.slice_rate) - Number(a.baseline_rate)));
+        bv = Number((b as any).effect_size_pp ?? (Number(b.slice_rate) - Number(b.baseline_rate)));
+      }
       return sortAsc ? av - bv : bv - av;
     });
     return list;
-  }, [patterns, query, sortKey, sortAsc, typeFilter]);
+  }, [patterns, query, sortKey, sortAsc, typeFilter, factorTab]);
 
   const openPattern = sorted.find((p) => p.pattern_id === openId);
   const openEvidence = openPattern ? evidence[String(openPattern.pattern_id)] : null;
@@ -71,32 +78,61 @@ function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
         subtitle="Multi-factor combinatorial patterns ranked by a weighted confidence composite (30% lift, 25% significance, 20% sample size, 15% recurrence, 10% effect size). Score is 0–100."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search patterns…"
-            className="w-64 pl-8"
-          />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-1">
+          <Button
+            size="sm"
+            variant={factorTab === "multi" ? "default" : "ghost"}
+            onClick={() => setFactorTab("multi")}
+            className="text-xs"
+          >
+            Multi-Factor Patterns
+          </Button>
+          <Button
+            size="sm"
+            variant={factorTab === "single" ? "default" : "ghost"}
+            onClick={() => setFactorTab("single")}
+            className="text-xs"
+          >
+            Single-Factor Signals
+          </Button>
+          <Button
+            size="sm"
+            variant={factorTab === "all" ? "default" : "ghost"}
+            onClick={() => setFactorTab("all")}
+            className="text-xs"
+          >
+            All Findings
+          </Button>
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Defect type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All defect types</SelectItem>
-            {defectTypes.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-xs text-muted-foreground">
-          {sorted.length} of {patterns.length} patterns
-        </span>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search patterns…"
+              className="w-56 pl-8"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Defect type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All defect types</SelectItem>
+              {defectTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            {sorted.length} shown
+          </span>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border">
@@ -107,46 +143,50 @@ function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
               <TableHead>Defect type</TableHead>
               {SORT_KEYS.map((s) => (
                 <TableHead key={s.key} className="cursor-pointer select-none text-right" onClick={() => cycleSort(s.key)}>
-                  <span className="inline-flex items-center gap-1">
+                  <div className="flex items-center justify-end gap-1">
                     {s.label}
                     {sortKey === s.key ? <ArrowUpDown className={cn("h-3.5 w-3.5", sortAsc ? "rotate-180" : "")} /> : null}
-                  </span>
+                  </div>
                 </TableHead>
               ))}
-              <TableHead className="text-right">Confidence</TableHead>
-              <TableHead />
+              <TableHead className="text-right">Action Priority</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map((p) => (
-              <TableRow
-                key={String(p.pattern_id)}
-                className="cursor-pointer hover:bg-secondary/50"
-                onClick={() => setOpenId(String(p.pattern_id))}
-              >
-                <TableCell className="max-w-xs truncate font-medium" title={String(p.description)}>
-                  {String(p.description ?? p.pattern_text)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="font-mono">
-                    {String(p.defect_type)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right font-data">{Number(p.lift)?.toFixed(2)}×</TableCell>
-                <TableCell className="text-right font-data">
-                  {p.p_value === null || p.p_value === undefined ? "—" : Number(p.p_value) < 0.001 ? "<.001" : Number(p.p_value).toFixed(3)}
-                </TableCell>
-                <TableCell className="text-right font-data">{Number(p.sample_size)?.toLocaleString()}</TableCell>
-                <TableCell className="text-right">
-                  <ScorePill score={Number(p.pattern_score ?? 0)} />
-                </TableCell>
-                <TableCell className="text-right">
-                  {openEvidence?.recommendation ? (
-                    <PriorityBadge priority={openEvidence.recommendation.priority} />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
+            {sorted.map((p) => {
+              const ev = evidence[String(p.pattern_id)];
+              const effectPp = Number(p.effect_size_pp ?? (Number(p.slice_rate) - Number(p.baseline_rate)));
+              return (
+                <TableRow
+                  key={String(p.pattern_id)}
+                  className="cursor-pointer hover:bg-secondary/50"
+                  onClick={() => setOpenId(String(p.pattern_id))}
+                >
+                  <TableCell className="max-w-xs truncate font-medium" title={String(p.description)}>
+                    {String(p.description ?? p.pattern_text)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="font-mono">
+                      {String(p.defect_type)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ScorePill score={Number(p.pattern_score ?? 0)} />
+                  </TableCell>
+                  <TableCell className="text-right font-data">{Number(p.lift)?.toFixed(2)}×</TableCell>
+                  <TableCell className="text-right font-data">
+                    {p.p_value === null || p.p_value === undefined ? "—" : Number(p.p_value) < 0.001 ? "<.001" : Number(p.p_value).toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right font-data">{Number(p.sample_size)?.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-data">{effectPp > 0 ? "+" : ""}{effectPp.toFixed(2)} pp</TableCell>
+                  <TableCell className="text-right">
+                    {ev?.recommendation ? (
+                      <PriorityBadge priority={ev.recommendation.priority} />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
