@@ -12,6 +12,7 @@ import { appRouter } from "../routers";
 import { engineRouter } from "../engineProxy";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { copilotRouter } from "./copilotApi";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -41,6 +42,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.use("/api/engine", engineRouter());
+  app.use("/api/copilot", copilotRouter);
   // tRPC API
   app.use(
     "/api/trpc",
@@ -64,7 +66,7 @@ async function startServer() {
   }
 
   server.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${port}/`);
+    console.log(`Server running on http://localhost:${port}/ (Network: http://0.0.0.0:${port}/)`);
   });
 }
 

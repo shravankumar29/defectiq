@@ -46,7 +46,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const copilotMut = trpc.engine.copilot.useMutation();
+
 
   const uploadMut = trpc.engine.upload.useMutation({
     onSuccess: async () => {
@@ -138,19 +138,30 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       },
       downloadReport,
 
-      copilot: {
-        ask: async (question: string) => {
-          const res = (await copilotMut.mutateAsync({ question })) as any;
-          return {
-            answer: String(res?.answer ?? "No answer available."),
-            sources_used: Array.isArray(res?.sources_used) ? res.sources_used : undefined,
-          };
-        },
-        busy: copilotMut.isPending,
-      },
+
     }),
-    [status, statusQ, resultsQ, generateMut, uploadMut, copilotMut, downloadReport, utils]
+    [status, statusQ, resultsQ, generateMut, uploadMut, downloadReport, utils]
   );
+
+  // We can inject copilot directly without useMemo dependency since it's just a fetch
+  value.copilot = {
+    ask: async (question: string) => {
+      const res = await fetch("/api/copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", text: question }] })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch copilot response");
+      }
+      return {
+        answer: String(data.answer ?? "No answer available."),
+        sources_used: Array.isArray(data.sources) ? data.sources : [],
+      };
+    },
+    busy: false,
+  };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

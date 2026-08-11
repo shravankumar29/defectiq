@@ -3,8 +3,7 @@ import { CorrelationCausationBanner } from "@/components/CorrelationCausationBan
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { trpc } from "@/lib/trpc";
-import { CornerDownLeft, Sparkles } from "lucide-react";
+import { CornerDownLeft, Sparkles, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import withDataset from "@/components/withDataset";
@@ -19,38 +18,66 @@ const SUGGESTIONS = [
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
+  evidence?: string;
   sources?: string[];
 };
 
 function CopilotPage({ results: _results }: { results: any; uploadCsv?: any }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
-  const chat = trpc.engine.copilot.useMutation();
+  const [isPending, setIsPending] = useState(false);
 
-  function send(question: string) {
+  async function send(question: string) {
     const q = question.trim();
-    if (!q || chat.isPending) return;
-    setMessages((m) => [...m, { role: "user", text: q }]);
+    if (!q || isPending) return;
+    
+    const newMessages = [...messages, { role: "user" as const, text: q }];
+    setMessages(newMessages);
     setInput("");
-    chat.mutate(
-      { question: q },
-      {
-        onSuccess: (data) => {
-          const d = data as any;
-          setMessages((m) => [
-            ...m,
-            {
-              role: "assistant",
-              text: String(d?.answer ?? "No answer available."),
-              sources: Array.isArray(d?.sources_used) ? d.sources_used : [],
-            },
-          ]);
-        },
-        onError: (e) => {
-          toast.error(e.message);
-        },
+    setIsPending(true);
+
+    try {
+      const res = await fetch("/api/copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch copilot response");
       }
-    );
+
+      let text = data.answer || "No response generated.";
+      let evidence = "";
+      
+      const evidenceIndex = text.search(/\n\nEvidence\n/i);
+      if (evidenceIndex !== -1) {
+        evidence = text.slice(evidenceIndex + 10).trim();
+        text = text.slice(0, evidenceIndex).trim();
+      } else {
+        const evidenceIndexAlt = text.search(/\nEvidence\n/i);
+        if (evidenceIndexAlt !== -1) {
+          evidence = text.slice(evidenceIndexAlt + 9).trim();
+          text = text.slice(0, evidenceIndexAlt).trim();
+        }
+      }
+
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text,
+          evidence,
+          sources: data.sources || [],
+        },
+      ]);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to connect to AI Copilot");
+    } finally {
+      setIsPending(false);
+    }
   }
 
   return (
@@ -83,7 +110,18 @@ function CopilotPage({ results: _results }: { results: any; uploadCsv?: any }) {
               ) : (
                 <Card className="w-full max-w-[85%]">
                   <div className="p-4">
-                    <p className="text-sm leading-relaxed">{m.text}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                    {m.evidence ? (
+                      <details className="mt-4 border border-border rounded-md overflow-hidden bg-muted/20">
+                        <summary className="cursor-pointer text-xs font-semibold px-3 py-2 bg-muted/40 hover:bg-muted/60 transition-colors flex items-center justify-between">
+                          <span>Evidence</span>
+                          <ChevronDown className="h-3 w-3" />
+                        </summary>
+                        <div className="p-3 text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                          {m.evidence}
+                        </div>
+                      </details>
+                    ) : null}
                     {m.sources?.length ? (
                       <p className="mt-2 border-t border-border pt-2 font-data text-[11px] text-muted-foreground">
                         Sources: {m.sources.join(", ")}
@@ -97,8 +135,12 @@ function CopilotPage({ results: _results }: { results: any; uploadCsv?: any }) {
               )}
             </div>
           ))}
-          {chat.isPending ? (
-            <div className="space-y-2">
+          {isPending ? (
+            <div className="space-y-3">
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-r-transparent" />
+                Analyzing DefectIQ evidence...
+              </div>
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
             </div>
@@ -118,8 +160,9 @@ function CopilotPage({ results: _results }: { results: any; uploadCsv?: any }) {
             }}
             placeholder="Ask about patterns, machines, shifts, or batches…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            disabled={isPending}
           />
-          <Button size="sm" onClick={() => send(input)} disabled={chat.isPending || !input.trim()}>
+          <Button size="sm" onClick={() => send(input)} disabled={isPending || !input.trim()}>
             <CornerDownLeft className="h-4 w-4" />
           </Button>
         </div>
