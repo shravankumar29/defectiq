@@ -37,7 +37,7 @@ export function engineRouter(): express.Router {
     try {
       const data = await relay("/generate", {
         method: "POST",
-        body: JSON.stringify({ secret: SECRET, rows: 20000 }),
+        body: JSON.stringify({ secret: SECRET, rows: 5000 }),
       });
       res.json({ ok: true, data });
     } catch (e) {

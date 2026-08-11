@@ -211,7 +211,7 @@ function AnalysisEmptyPage({
           <CardHeader>
             <CardTitle className="text-base">Generate synthetic dataset</CardTitle>
             <CardDescription>
-              20,000 inspection records over 90 days — 5 machines, 3 shifts, 40 batches, 4 defect types,
+              5,000 inspection records over 90 days — 5 machines, 3 shifts, 40 batches, 4 defect types,
               with embedded process patterns for hands-on exploration.
             </CardDescription>
           </CardHeader>

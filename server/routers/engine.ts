@@ -32,7 +32,7 @@ async function relayJson(
 export const engineRouter = router({
   status: publicProcedure.query(() => relayJson("/status")),
 
-  generate: publicProcedure.mutation(() => relayJson("/generate", { method: "POST", body: { rows: 20000 } })),
+  generate: publicProcedure.mutation(() => relayJson("/generate", { method: "POST", body: { rows: 5000 } })),
 
   upload: publicProcedure
     .input(z.object({ csv_base64: z.string().min(1) }))
