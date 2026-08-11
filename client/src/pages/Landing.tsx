@@ -171,8 +171,8 @@ function UploadDialog({
       setTimeout(() => {
         onUploadStateChange?.("idle");
       }, 2000);
-    } catch {
-      toast.error("Could not generate the demo dataset.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not generate the demo dataset.");
       onUploadStateChange?.("idle");
     }
   }
