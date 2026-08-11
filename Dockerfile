@@ -18,7 +18,7 @@ COPY engine engine/
 COPY . .
 
 RUN /opt/defectiq-venv/bin/pip install --no-cache-dir \
-    pandas numpy scipy scikit-learn fastapi uvicorn jinja2 weasyprint openpyxl \
+    pandas numpy scipy scikit-learn fastapi uvicorn jinja2 reportlab openpyxl \
     && npm install -g corepack@latest && corepack pnpm install \
     && NODE_ENV=production corepack pnpm run build
 
@@ -29,4 +29,4 @@ ENV ENGINE_URL=http://127.0.0.1:8901
 # Start Python engine in the background (it binds 127.0.0.1:8901 only), then
 # serve the Node app on the managed PORT. Output is kept minimal to avoid the
 # dev port-detection regex matching "8901" in this file's comments.
-CMD ["sh", "-c", "/opt/defectiq-venv/bin/python engine_server.py >/dev/null 2>&1 & sleep 3 && exec node dist/index.js"]
+CMD ["sh", "-c", "/opt/defectiq-venv/bin/python engine_server.py > engine.log 2>&1 & sleep 3 && exec node dist/index.js"]
