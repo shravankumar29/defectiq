@@ -125,8 +125,8 @@ function UploadDialog({
       setAnalysisResult(analysis);
       setModalOpen(true);
       onUploadStateChange?.("mapping");
-    } catch {
-      toast.error("Could not read file. Please ensure it is a valid CSV or Excel file.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not read file. Please ensure it is a valid CSV or Excel file.");
       onUploadStateChange?.("idle");
     }
   }
