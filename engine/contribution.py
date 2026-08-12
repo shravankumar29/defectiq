@@ -11,9 +11,9 @@ import pandas as pd
 from scipy.stats import chi2_contingency
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder
 
-from .pattern_engine import _bucket_columns, _slice_mask, WEIGHTS, _norm_lift, _norm_significance, _norm_sample, _norm_effect
+from .pattern_engine import _bucket_columns
 
 
 LIFT_HIGH, LIFT_MOD = 3.0, 1.5
@@ -32,6 +32,25 @@ def _factor_group(name):
     return name.title()
 
 
+def _get_shared_investigation_features(df):
+    cats = ["machine_id", "shift", "batch_id"]
+    num = ["temperature", "pressure", "speed", "vibration", "humidity"]
+    valid_cats = [c for c in cats if c in df.columns]
+    valid_num = [c for c in num if c in df.columns]
+    
+    enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    X_cat = enc.fit_transform(df[valid_cats].astype(str)) if valid_cats else np.empty((len(df), 0))
+    
+    if valid_num:
+        X_num = df[valid_num].fillna(df[valid_num].median()).to_numpy()
+    else:
+        X_num = np.empty((len(df), 0))
+        
+    X = np.hstack([X_cat, X_num])
+    features = valid_cats + valid_num
+    return X, features
+
+
 def contribution_ranking(df, defect_type, min_sample=30):
     global_rate = df["defect_count"].sum() / df["units_inspected"].sum()
     target = df[df["defect_type"] == defect_type]
@@ -43,16 +62,20 @@ def contribution_ranking(df, defect_type, min_sample=30):
         vals = df[col].unique()
         if len(vals) > 40:
             continue  # too granular for per-category lift (e.g. inspection id)
+        
+        # Optimize by converting to string array once
+        col_str = df[col].astype(str).to_numpy()
+        
         for v in vals:
-            mask = (df[col].astype(str) == str(v)).to_numpy()
+            mask = col_str == str(v)
             n = int(mask.sum())
             if n < min_sample:
                 continue
             g = df[mask]
             tg = g[g["defect_type"] == defect_type]
             r_in = tg["defect_count"].sum() / tg["units_inspected"].sum() if tg["units_inspected"].sum() > 0 else 0.0
-            r_out = (target_units - int(tg["units_inspected"].sum()))
-            r_out = (target_def - int(tg["defect_count"].sum())) / r_out if r_out > 0 else global_rate
+            r_out_units = (target_units - int(tg["units_inspected"].sum()))
+            r_out = (target_def - int(tg["defect_count"].sum())) / r_out_units if r_out_units > 0 else global_rate
             lift = r_in / r_out if r_out > 0 else None
             if lift is None or lift < 1.0:
                 continue
@@ -83,58 +106,62 @@ def contribution_ranking(df, defect_type, min_sample=30):
         "baseline_rate": round(global_rate * 100, 2),
         "target_units": target_units,
         "target_defects": target_def,
-        "target_rate": round(target_def / target_units * 100, 2),
+        "target_rate": round(target_def / target_units * 100, 2) if target_units > 0 else 0.0,
         "factors": rows[:25],
     }
 
 
-def mutual_information_ranking(df, defect_type):
+def mutual_information_ranking(df, defect_type, precomputed_X=None):
     """Aggregate MI between factor columns and defect/no-defect for the type."""
-    d = df.copy()
-    if len(d) < 2:
+    if len(df) < 2:
         return []
-    d["is_target"] = (d["defect_type"] == defect_type).astype(int)
-    feat_cols = ["machine_id", "shift", "batch_id"]
-    buckets = [c for c in d.columns if c.endswith("_bucket")]
-    feat_cols += [c[:-7] for c in buckets]  # use raw param columns for MI
-    feat_cols = [c for c in feat_cols if c in d.columns]
+    
+    y = (df["defect_type"] == defect_type).astype(int).to_numpy()
+    
+    if precomputed_X is not None:
+        X, features = precomputed_X
+    else:
+        X, features = _get_shared_investigation_features(df)
+        
+    if len(features) == 0:
+        return []
 
-    enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-    X = enc.fit_transform(d[feat_cols].astype(str))
-    y = d["is_target"].to_numpy()
     mi = mutual_info_classif(X, y, random_state=42)
     order = np.argsort(-mi)
     out = []
     for idx in order:
-        out.append({"factor": feat_cols[idx], "mutual_information": round(float(mi[idx]), 4)})
+        out.append({"factor": features[idx], "mutual_information": round(float(mi[idx]), 4)})
     return out
 
 
-def decision_tree_splits(df, defect_type, max_depth=3):
+def decision_tree_splits(df, defect_type, max_depth=3, precomputed_X=None):
     """Shallow decision tree as a cross-check; returns top splits with normalized importances (summing to ~100%)."""
-    d = df.copy()
-    if len(d) < 2:
+    if len(df) < 2:
         return {
             "max_depth": max_depth,
             "tree_features": [],
             "feature_importances_pct": {},
             "top_splits": [],
         }
-    d["is_defective"] = (d["defect_count"] > 0).astype(int)
-    d["is_target"] = (d["defect_type"] == defect_type).astype(int)
 
-    enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-    cats = ["machine_id", "shift", "batch_id"]
-    num = ["temperature", "pressure", "speed", "vibration", "humidity"]
-    X_cat = enc.fit_transform(d[cats].astype(str))
-    X_num = d[num].fillna(d[num].median()).to_numpy()
-    X = np.hstack([X_cat, X_num])
-    y = d["is_target"].to_numpy()
+    y = (df["defect_type"] == defect_type).astype(int).to_numpy()
+    
+    if precomputed_X is not None:
+        X, features = precomputed_X
+    else:
+        X, features = _get_shared_investigation_features(df)
+        
+    if len(features) == 0:
+        return {
+            "max_depth": max_depth,
+            "tree_features": [],
+            "feature_importances_pct": {},
+            "top_splits": [],
+        }
 
     tree = DecisionTreeClassifier(max_depth=max_depth, min_samples_leaf=50, random_state=42)
     tree.fit(X, y)
 
-    features = cats + num
     node_map = {int(i): name for i, name in enumerate(features)}
     
     # Calculate Gini gain per split node

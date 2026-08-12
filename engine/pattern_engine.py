@@ -42,20 +42,6 @@ def _factor_key(name, value):
     return f"{name}={v}"
 
 
-def _slice_mask(df, factors):
-    """Boolean mask for records matching all factor conditions."""
-    mask = np.ones(len(df), dtype=bool)
-    for f in factors:
-        m = re.match(r"^([A-Za-z_0-9]+)=(.+)$", f)
-        name, val = m.group(1), m.group(2)
-        if name.endswith("_bucket"):
-            thr = float(val[1:])
-            mask &= df[name[:-7]] > thr
-        else:
-            mask &= (df[name].astype(str) == val).to_numpy()
-    return mask
-
-
 def _two_prop_test(def_in, tot_in, def_out, tot_out):
     """Chi-square test of independence (defect x slice) via scipy contingency."""
     n_in_def, n_in_ok = def_in, tot_in - def_in
@@ -92,36 +78,52 @@ def _norm_effect(def_rate_in, def_rate_base):
     return min(_saturate(abs(def_rate_in - def_rate_base) * 40.0, 1.0), 1.0)
 
 
-def _recurrence(df, factors, defect_type=None):
-    """Fraction of weekly windows (with n>=MIN_SAMPLE in the window) where
-    the slice defect rate exceeds the window baseline."""
-    d = df.copy()
-    d["week"] = d["timestamp"].dt.to_period("W")
-    wins = []
-    for w, g in d.groupby("week"):
-        gmask = _slice_mask(g, factors)
-        gw = g[gmask]
-        if len(gw) < MIN_SAMPLE or len(g) < MIN_SAMPLE:
-            continue
-        r_slice = gw["defect_count"].sum() / gw["units_inspected"].sum()
-        r_base = g["defect_count"].sum() / g["units_inspected"].sum()
-        wins.append(r_slice > r_base)
-    return sum(wins) / len(wins) if wins else 0.0
-
-
-def _defect_rates(df, mask):
+def _recurrence_optimized(mask, df, week_totals):
+    """Optimized recurrence using precomputed weekly totals."""
     in_g = df[mask]
-    if len(in_g) == 0:
-        return None
-    r_in = in_g["defect_count"].sum() / in_g["units_inspected"].sum()
-    return r_in
+    if "_week_period" not in in_g.columns:
+        return 0.0
+    
+    in_weeks = in_g.groupby("_week_period").agg({
+        "units_inspected": "sum",
+        "defect_count": "sum",
+        "_week_period": "size"
+    }).rename(columns={"_week_period": "n_rows"})
+    
+    wins = 0
+    total = 0
+    for w, in_data in in_weeks.iterrows():
+        if w not in week_totals.index: continue
+        wt = week_totals.loc[w]
+        if wt["units_inspected"] < 50 or in_data["units_inspected"] < 50:
+            continue
+        r_slice = in_data["defect_count"] / max(1, in_data["units_inspected"])
+        r_base = wt["defect_count"] / max(1, wt["units_inspected"])
+        if r_slice > r_base:
+            wins += 1
+        total += 1
+    return wins / total if total > 0 else 0.0
 
 
 def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
-    if min_sample is None:
-        min_sample = max(1, min(MIN_SAMPLE, len(df) // 4))
-    global_rate = df["defect_count"].sum() / max(1, df["units_inspected"].sum())
+    total_units = df["units_inspected"].sum()
+    min_units = max(50, int(total_units * 0.005))  # 0.5% of total units
+    global_rate = df["defect_count"].sum() / max(1, total_units)
     cols = _bucket_columns(df)
+
+    if "_week_period" not in df.columns:
+        df["_week_period"] = df["timestamp"].dt.to_period("W")
+        
+    week_totals = df.groupby("_week_period").agg({
+        "units_inspected": "sum",
+        "defect_count": "sum",
+        "_week_period": "size"
+    }).rename(columns={"_week_period": "n_rows"})
+
+    df_str = {}
+    for c in cols:
+        if not c.endswith("_bucket"):
+            df_str[c] = df[c].astype(str)
 
     candidates = []
     levels = [[c] for c in cols]
@@ -136,25 +138,34 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
             if c.endswith("_bucket"):
                 value_sets.append([f">{df[c[:-7]].quantile(0.9):g}"])
             else:
-                value_sets.append(sorted(df[c].astype(str).unique().tolist()))
+                value_sets.append(sorted(df_str[c].unique().tolist()))
 
         for vals in itertools.product(*value_sets):
             factors = [_factor_key(c, v) for c, v in zip(combo, vals)]
-            mask = _slice_mask(df, factors)
-            n = int(mask.sum())
-            if n < min_sample:
-                continue
-
+            
+            # Optimized masking
+            mask = np.ones(len(df), dtype=bool)
+            for c, v in zip(combo, vals):
+                if c.endswith("_bucket"):
+                    mask &= (df[c[:-7]] > float(v[1:])).to_numpy()
+                else:
+                    mask &= (df_str[c] == v).to_numpy()
+            
             in_g = df[mask]
-            def_in = int(in_g["defect_count"].sum())
-            r_in = def_in / in_g["units_inspected"].sum()
-
-            out_n = int((~mask).sum())
-            if out_n < min_sample:
+            def_units_in = int(in_g["units_inspected"].sum())
+            if def_units_in < min_units:
                 continue
+
+            def_in = int(in_g["defect_count"].sum())
+            r_in = def_in / max(1, def_units_in)
+
             out_g = df[~mask]
+            def_units_out = int(out_g["units_inspected"].sum())
+            if def_units_out < min_units:
+                continue
+            
             def_out = int(out_g["defect_count"].sum())
-            r_out = def_out / out_g["units_inspected"].sum() if out_g["units_inspected"].sum() > 0 else 0.0
+            r_out = def_out / max(1, def_units_out)
 
             lift = r_in / r_out if r_out > 0 else None
             p = _two_prop_test(def_in, int(in_g["units_inspected"].sum()),
@@ -162,11 +173,11 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
             if p is None or lift is None or lift < 1.0:
                 continue
 
-            rec = _recurrence(df, factors)
+            rec = _recurrence_optimized(mask, df, week_totals)
             scores = {
                 "lift": _norm_lift(lift),
                 "significance": _norm_significance(p),
-                "sample_size": _norm_sample(n),
+                "sample_size": _norm_sample(def_units_in),
                 "recurrence": rec,
                 "effect_size": _norm_effect(r_in, global_rate),
             }
@@ -176,16 +187,16 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
             if defect_type is not None:
                 # restrict to patterns relevant for the selected defect type
                 sub = in_g[in_g["defect_type"] == defect_type]
-                if len(sub) < min_sample:
+                if sub["units_inspected"].sum() < min_units:
                     continue
-                r_in_dt = sub["defect_count"].sum() / sub["units_inspected"].sum()
+                r_in_dt = sub["defect_count"].sum() / max(1, sub["units_inspected"].sum())
                 out_dt = out_g[out_g["defect_type"] == defect_type]
-                r_out_dt = (out_dt["defect_count"].sum() / out_dt["units_inspected"].sum()) if len(out_dt) >= min_sample else global_rate
+                r_out_dt = (out_dt["defect_count"].sum() / max(1, out_dt["units_inspected"].sum())) if out_dt["units_inspected"].sum() >= min_units else global_rate
                 lift_dt = r_in_dt / r_out_dt if r_out_dt > 0 else None
                 if lift_dt is None or lift_dt < 1.0:
                     continue
                 top_dt = sub["defect_type"].value_counts().head(3)
-                dominant = str(top_dt.index[0])
+                dominant = str(top_dt.index[0]) if len(top_dt) > 0 else defect_type
             else:
                 top_dt = in_g["defect_type"].value_counts().head(3)
                 lift_dt = lift
@@ -198,7 +209,7 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
                     first_real = str(real_dt[0])
                     first_cnt = top_dt[first_real]
                     tot_dt_cnt = int(top_dt.sum())
-                    if (first_cnt / tot_dt_cnt) < 0.45 and len(real_dt) > 1:
+                    if (first_cnt / max(1, tot_dt_cnt)) < 0.45 and len(real_dt) > 1:
                         dominant = "Multiple defect types observed"
                     else:
                         dominant = first_real
@@ -229,9 +240,9 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
                     desc_parts.append(f)
             desc_str = " + ".join(desc_parts)
 
-            windows = df[mask]["timestamp"]
-            ts_min = str(windows.min().date()) if pd.notnull(windows.min()) else "N/A"
-            ts_max = str(windows.max().date()) if pd.notnull(windows.max()) else "N/A"
+            windows = in_g["timestamp"]
+            ts_min = str(windows.min().date()) if len(windows) and pd.notnull(windows.min()) else "N/A"
+            ts_max = str(windows.max().date()) if len(windows) and pd.notnull(windows.max()) else "N/A"
 
             def_units_in = int(in_g["units_inspected"].sum())
             p_rate, p_ci_low, p_ci_high = (0.0, 0.0, 0.0)
@@ -259,7 +270,7 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
                 "lift": round(float(lift_dt), 2),
                 "effect_size_pp": round((float(r_in_dt) - float(r_out_dt)) * 100, 2),
                 "sample_size": def_units_in, # units inspected (n)
-                "record_count": n, # rows in slice
+                "record_count": int(mask.sum()), # rows in slice
                 "units_inspected": def_units_in,
                 "defective_units": int(def_in),
                 "p_value": round(p, 4),
@@ -271,13 +282,13 @@ def mine_patterns(df, max_depth=3, min_sample=None, defect_type=None):
                 "score_breakdown": {k: round(v * 100) for k, v in scores.items()},
                 "score_methodology": "Pattern score combines effect size, sample size, statistical confidence, recurrence and deviation from baseline.",
                 "date_range": [ts_min, ts_max],
-                "affected_batches": sorted(df[mask]["batch_id"].unique().tolist())[:8],
-                "affected_shifts": sorted(df[mask]["shift"].unique().tolist()),
-                "affected_machines": sorted(df[mask]["machine_id"].unique().tolist()),
+                "affected_batches": sorted(in_g["batch_id"].unique().tolist())[:8],
+                "affected_shifts": sorted(in_g["shift"].unique().tolist()),
+                "affected_machines": sorted(in_g["machine_id"].unique().tolist()),
                 "param_stats": {
                     c[:-7]: {
-                        "mean_in": round(float(df[mask][c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
-                        "mean_out": round(float(df[~mask][c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
+                        "mean_in": round(float(in_g[c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
+                        "mean_out": round(float(out_g[c[:-7]].mean()), 1) if c[:-7] in df.columns else 0.0,
                         "threshold": f"> {df[c[:-7]].quantile(0.9):g}" if c[:-7] in df.columns else "N/A",
                     }
                     for c in combo if c.endswith("_bucket")

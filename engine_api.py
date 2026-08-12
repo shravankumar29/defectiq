@@ -3,8 +3,7 @@ DefectIQ API bridge — runs the Python engine via a small FastAPI server
 and exposes results as JSON for the Node/Express tRPC layer.
 
 The analysis state (dataset, computed results) is cached in this process so
-the ~20k-row pipeline (pattern mining is the heavy part) runs only once per
-dataset change.
+the ~20k-row pipeline runs only once per dataset change.
 """
 
 import base64
@@ -20,8 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine.synthetic_generator import generate_inspections, validate_and_clean
 from engine.trends import compute_daily_trend, cusum_detection, before_after_panel, generate_trend_interpretation
 from engine.pattern_engine import mine_patterns
-from engine.contribution import contribution_ranking, mutual_information_ranking, decision_tree_splits
-from engine.clustering import cluster_kmeans, cluster_dbscan
+from engine.contribution import contribution_ranking, mutual_information_ranking, decision_tree_splits, _get_shared_investigation_features
+from engine.clustering import cluster_both
 from engine.recommendations import generate_recommendations
 from engine.evidence import build_evidence
 from engine.overview import (kpi_cards, pareto_top5, machine_shift_heatmap,
@@ -36,7 +35,11 @@ from engine.schema_mapper import analyze_schema, normalize_dataframe
 
 _state = {
     "df": None,
+    "raw_df": None,
     "results": None,
+    "patterns_result": None,
+    "clustering_result": None,
+    "investigation_cache": {},
     "busy": False,
     "error": None,
     "dataset_source": "demo",
@@ -44,41 +47,39 @@ _state = {
     "lock": threading.Lock(),
 }
 
+def perf_log(name, t0):
+    t = int((time.time() - t0) * 1000)
+    print(f"[PERF] {name}: {t} ms")
+    return time.time()
 
-def _compute_all(df):
+def compute_core(df):
+    t0 = time.time()
     kpis = kpi_cards(df)
+    t0 = perf_log("KPI", t0)
 
     trend = compute_daily_trend(df)
+    t0 = perf_log("daily trend", t0)
+    
     cp, series = cusum_detection(trend)
+    t0 = perf_log("CUSUM", t0)
+    
     change_points = [cp] if cp else []
     ba = before_after_panel(df, cp["date"], group_col="machine_id") if cp else None
+    t0 = perf_log("before_after", t0)
+    
     t_interp = generate_trend_interpretation(series, cp, df)
 
-    # Subsample for ML & pattern mining if dataset is large (>25k rows) for ultra-fast performance
-    df_ml = df.sample(n=25000, random_state=42) if len(df) > 25000 else df
-
-    patterns = mine_patterns(df_ml)
-    single_signals = [p for p in patterns if len(p.get("factors", [])) == 1]
-    multi_patterns = [p for p in patterns if len(p.get("factors", [])) >= 2]
-
-    recs = generate_recommendations(patterns)
-    evidence = {p["pattern_id"]: build_evidence(p, r)
-                for p, r in zip(patterns, [next((x for x in recs if x["pattern_id"] == p["pattern_id"]), None) for p in patterns])}
-    evidence = {str(pid): e for pid, e in evidence.items()
-                if e is not None and pid is not None and str(pid).strip() not in ("", "nan", "None", "null")}
-
-    defect_types = sorted(df["defect_type"].value_counts().index.tolist())
-    contrib = {dt: contribution_ranking(df_ml, dt) for dt in defect_types}
-    mi = {dt: mutual_information_ranking(df_ml, dt) for dt in defect_types}
-    dtree = {dt: decision_tree_splits(df_ml, dt) for dt in defect_types}
-
-    km = cluster_kmeans(df_ml)
-    db = cluster_dbscan(df_ml)
-
     dt_analysis = defect_type_analysis(df)
+    t0 = perf_log("defect analysis", t0)
+    
     mach_analysis = machine_analysis_details(df)
+    t0 = perf_log("machine analysis", t0)
+    
     sh_analysis = shift_analysis_details(df)
+    t0 = perf_log("shift analysis", t0)
+    
     param_analysis = process_parameter_analysis(df)
+    t0 = perf_log("parameter analysis", t0)
 
     # Dynamic Executive Summary
     n_rec = kpis["total_inspections"]
@@ -94,14 +95,7 @@ def _compute_all(df):
     hrm_str = f"{m_label} recorded the highest machine defect rate at {hrm['defect_rate_pct']:.2f}%" if hrm else "Machine defect rates were balanced"
     hrs_str = f"{s_label} recorded the highest shift defect rate at {hrs['defect_rate_pct']:.2f}%" if hrs else "Shift defect rates were balanced"
 
-    if multi_patterns:
-        top_m = multi_patterns[0]
-        assoc_str = f"The strongest multi-factor association was {top_m['description']}, exhibiting a {top_m['slice_rate']:.2f}% defect rate vs {top_m['baseline_rate']:.2f}% baseline ({top_m['lift']:.2f}x lift)."
-    elif single_signals:
-        top_s = single_signals[0]
-        assoc_str = f"The strongest single-factor signal was {top_s['description']}, exhibiting a {top_s['slice_rate']:.2f}% defect rate vs {top_s['baseline_rate']:.2f}% baseline ({top_s['lift']:.2f}x lift)."
-    else:
-        assoc_str = "No high-lift pattern exceeded statistical filters."
+    assoc_str = "Advanced pattern mining will process multi-factor associations in the background."
 
     active_p = [p for p in param_analysis.values() if p.get("has_data")]
     if active_p:
@@ -132,6 +126,9 @@ def _compute_all(df):
 
     data_quality = df.attrs.get("data_quality") if hasattr(df, "attrs") else None
 
+    defect_types = sorted(df["defect_type"].value_counts().index.tolist())
+    t0 = perf_log("serialization (core)", t0)
+    
     return {
         "dataset_source": _state.get("dataset_source", "demo"),
         "filename": _state.get("filename", "Synthetic Demo Dataset"),
@@ -146,18 +143,8 @@ def _compute_all(df):
         "machine_analysis": mach_analysis,
         "shift_analysis": sh_analysis,
         "process_parameter_analysis": param_analysis,
-        "single_factor_signals": single_signals[:30],
-        "multi_factor_patterns": multi_patterns[:30],
         "change_points": change_points,
         "before_after": ba,
-        "patterns": patterns[:60],
-        "recommendations": recs,
-        "evidence": evidence,
-        "contribution": contrib,
-        "mutual_information": mi,
-        "decision_tree": dtree,
-        "clustering_kmeans": km,
-        "clustering_dbscan": db,
         "defect_types": defect_types,
     }
 
@@ -168,10 +155,16 @@ def run_analysis(df=None, generate=False):
         if df is not None:
             _state["df"] = df
             _state["results"] = None
+            _state["patterns_result"] = None
+            _state["clustering_result"] = None
+            _state["investigation_cache"] = {}
+            
         if _state["results"] is None and _state["df"] is not None:
             _state["busy"] = True
             try:
-                _state["results"] = _compute_all(_state["df"])
+                t0 = time.time()
+                _state["results"] = compute_core(_state["df"])
+                perf_log("TOTAL TO DASHBOARD", t0)
                 _state["error"] = None
             except Exception as exc:  # noqa
                 _state["error"] = str(exc)
@@ -179,6 +172,97 @@ def run_analysis(df=None, generate=False):
             finally:
                 _state["busy"] = False
         return _state["results"]
+
+
+def get_patterns_lazy():
+    with _state["lock"]:
+        if _state["patterns_result"] is not None:
+            return _state["patterns_result"]
+        
+        df = _state["df"]
+        if df is None:
+            raise ValueError("No dataset loaded.")
+        
+        t0 = time.time()
+        df_ml = df.sample(n=25000, random_state=42) if len(df) > 25000 else df
+        
+        patterns = mine_patterns(df_ml)
+        t0 = perf_log("pattern mining", t0)
+        
+        single_signals = [p for p in patterns if len(p.get("factors", [])) == 1]
+        multi_patterns = [p for p in patterns if len(p.get("factors", [])) >= 2]
+        
+        recs = generate_recommendations(patterns)
+        t0 = perf_log("recommendations", t0)
+        
+        evidence = {p["pattern_id"]: build_evidence(p, r)
+                    for p, r in zip(patterns, [next((x for x in recs if x["pattern_id"] == p["pattern_id"]), None) for p in patterns])}
+        evidence = {str(pid): e for pid, e in evidence.items()
+                    if e is not None and pid is not None and str(pid).strip() not in ("", "nan", "None", "null")}
+        t0 = perf_log("evidence", t0)
+        
+        _state["patterns_result"] = _sanitize({
+            "patterns": patterns[:60],
+            "single_factor_signals": single_signals[:30],
+            "multi_factor_patterns": multi_patterns[:30],
+            "recommendations": recs,
+            "evidence": evidence
+        })
+        return _state["patterns_result"]
+
+
+def get_clustering_lazy():
+    with _state["lock"]:
+        if _state["clustering_result"] is not None:
+            return _state["clustering_result"]
+        
+        df = _state["df"]
+        if df is None:
+            raise ValueError("No dataset loaded.")
+        
+        t0 = time.time()
+        df_ml = df.sample(n=25000, random_state=42) if len(df) > 25000 else df
+        
+        km, db = cluster_both(df_ml)
+        t0 = perf_log("Clustering Pipeline", t0)
+        
+        _state["clustering_result"] = _sanitize({
+            "clustering_kmeans": km,
+            "clustering_dbscan": db
+        })
+        return _state["clustering_result"]
+
+
+def get_investigation_lazy(defect_type: str):
+    with _state["lock"]:
+        if defect_type in _state["investigation_cache"]:
+            return _state["investigation_cache"][defect_type]
+            
+        df = _state["df"]
+        if df is None:
+            raise ValueError("No dataset loaded.")
+            
+        t0 = time.time()
+        df_ml = df.sample(n=25000, random_state=42) if len(df) > 25000 else df
+        
+        contrib = contribution_ranking(df_ml, defect_type)
+        t0 = perf_log(f"contribution [{defect_type}]", t0)
+        
+        precomputed_X = _get_shared_investigation_features(df_ml)
+        
+        mi = mutual_information_ranking(df_ml, defect_type, precomputed_X=precomputed_X)
+        t0 = perf_log(f"mutual information [{defect_type}]", t0)
+        
+        dtree = decision_tree_splits(df_ml, defect_type, precomputed_X=precomputed_X)
+        t0 = perf_log(f"decision tree [{defect_type}]", t0)
+        
+        result = _sanitize({
+            "contribution": contrib,
+            "mutual_information": mi,
+            "decision_tree": dtree
+        })
+        _state["investigation_cache"][defect_type] = result
+        return result
 
 
 def load_synthetic(n=20000, seed=42):
@@ -201,7 +285,10 @@ def _parse_raw_upload(base64_csv: str):
     from io import BytesIO
     import base64
     try:
-        # Fix missing padding if any
+        t0 = time.time()
+        if "," in base64_csv:
+            base64_csv = base64_csv.split(",", 1)[1]
+        
         base64_csv += "=" * ((4 - len(base64_csv) % 4) % 4)
         raw = base64.b64decode(base64_csv)
         s = raw.decode("utf-8", errors="replace")
@@ -214,6 +301,7 @@ def _parse_raw_upload(base64_csv: str):
                 df = pd.read_csv(BytesIO(raw))
             except UnicodeDecodeError:
                 df = pd.read_csv(BytesIO(raw), encoding="latin1")
+        perf_log("Parsing Upload", t0)
     except Exception as exc:
         raise ValueError(f"Could not parse the uploaded file: {exc}")
     if df is None or len(df) == 0:
@@ -224,13 +312,19 @@ def _parse_raw_upload(base64_csv: str):
 def preview_uploaded(base64_csv: str) -> dict:
     """Pre-analyzes uploaded CSV/XLSX to discover columns and map schema."""
     df = _parse_raw_upload(base64_csv)
+    _state["raw_df"] = df
     schema_info = analyze_schema(df)
     return schema_info
 
 
 def confirm_uploaded(base64_csv: str, user_mappings: dict, filename: str = "Uploaded Dataset") -> dict:
     """Applies confirmed mappings, normalizes DataFrame, and executes analytics."""
-    df = _parse_raw_upload(base64_csv)
+    if _state["raw_df"] is not None:
+        df = _state["raw_df"]
+    else:
+        df = _parse_raw_upload(base64_csv)
+        
+    _state["raw_df"] = None # clear cache after use
     normalized_df = normalize_dataframe(df, user_mappings)
     cleaned_df = validate_and_clean(normalized_df)
     if len(cleaned_df) == 0:
@@ -256,6 +350,7 @@ def load_uploaded(base64_csv: str, filename: str = "Uploaded Dataset") -> dict:
         for item in analysis["column_mappings"]
         if item["mapped_field"] is not None
     }
+    _state["raw_df"] = df
     return confirm_uploaded(base64_csv, auto_mappings, filename=filename)
 
 
@@ -263,10 +358,11 @@ def _sanitize(o):
     """Recursively replace float nan/inf with None so JSON serialization
     never raises 'Out of range float values are not JSON compliant'."""
     import math
-    if isinstance(o, float):
+    import numpy as np
+    if isinstance(o, (float, np.floating)):
         if math.isnan(o) or math.isinf(o):
             return None
-        return o
+        return float(o)
     if isinstance(o, dict):
         return {k: _sanitize(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -285,13 +381,18 @@ def get_copilot_answer(question: str) -> dict:
     if results is None:
         return {"answer": "No dataset loaded — generate or upload inspection data first.",
                 "sources_used": False}
+    
+    pat_res = _state.get("patterns_result", {})
+    
     ctx = build_analysis_context(
         overview=results["overview"],
-        patterns=results["patterns"],
-        change_points=results["change_points"],
-        recommendations=results["recommendations"],
-        defect_types=results["defect_types"],
+        patterns=pat_res.get("patterns", []) if pat_res else [],
+        change_points=results.get("change_points", []),
+        recommendations=pat_res.get("recommendations", []) if pat_res else [],
+        defect_types=results.get("defect_types", []),
         kpis=results["kpis"],
+        machine_analysis=results.get("machine_analysis"),
+        shift_analysis=results.get("shift_analysis"),
     )
     return ask_copilot(question, ctx)
 
@@ -300,21 +401,24 @@ def generate_report_pdf() -> bytes:
     results = get_results()
     if results is None:
         raise ValueError("No dataset loaded")
+        
+    pat_res = get_patterns_lazy()
+    
     return render_pdf_bytes(
         kpis=results["kpis"],
-        patterns=results["patterns"],
-        recommendations=results["recommendations"],
+        patterns=pat_res.get("patterns", []),
+        recommendations=pat_res.get("recommendations", []),
         change_points=results.get("change_points"),
         machine_comparison=results["kpis"].get("machine_comparison"),
         shift_comparison=results["kpis"].get("shift_comparison"),
-        evidence_items=list(results.get("evidence", {}).values())[:8],
+        evidence_items=list(pat_res.get("evidence", {}).values())[:8],
         executive_summary=results.get("executive_summary"),
         defect_type_analysis=results.get("defect_type_analysis"),
         machine_analysis=results.get("machine_analysis"),
         shift_analysis=results.get("shift_analysis"),
         process_parameter_analysis=results.get("process_parameter_analysis"),
-        single_factor_signals=results.get("single_factor_signals"),
-        multi_factor_patterns=results.get("multi_factor_patterns"),
+        single_factor_signals=pat_res.get("single_factor_signals"),
+        multi_factor_patterns=pat_res.get("multi_factor_patterns"),
         trend_series=results.get("trend_series"),
         trend_interpretation=results.get("trend_interpretation"),
         filename=_state.get("filename", "Uploaded Dataset"),
@@ -326,7 +430,8 @@ def generate_report_csv() -> str:
     results = get_results()
     if results is None:
         raise ValueError("No dataset loaded")
-    return build_csv_export(results["patterns"], results["recommendations"], results["evidence"])
+    pat_res = get_patterns_lazy()
+    return build_csv_export(pat_res.get("patterns", []), pat_res.get("recommendations", []), pat_res.get("evidence", {}))
 
 
 def get_state_summary():

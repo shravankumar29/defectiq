@@ -137,31 +137,27 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return res;
       },
       downloadReport,
-
-
-    }),
-    [status, statusQ, resultsQ, generateMut, uploadMut, downloadReport, utils]
-  );
-
-  // We can inject copilot directly without useMemo dependency since it's just a fetch
-  value.copilot = {
-    ask: async (question: string) => {
-      const res = await fetch("/api/copilot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", text: question }] })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch copilot response");
+      copilot: {
+        ask: async (question: string) => {
+          const res = await fetch("/api/copilot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [{ role: "user", text: question }] })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to fetch copilot response");
+          }
+          return {
+            answer: String(data.answer ?? "No answer available."),
+            sources_used: Array.isArray(data.sources) ? data.sources : [],
+          };
+        },
+        busy: false,
       }
-      return {
-        answer: String(data.answer ?? "No answer available."),
-        sources_used: Array.isArray(data.sources) ? data.sources : [],
-      };
-    },
-    busy: false,
-  };
+    }),
+    [status, statusQ, resultsQ, generateMut, uploadMut, downloadReport, utils, previewUploadMut, confirmUploadMut]
+  );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

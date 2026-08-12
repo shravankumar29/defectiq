@@ -16,36 +16,59 @@ NUM_FEATURES = ["defect_rate", "temperature", "pressure", "speed", "vibration", 
 
 def _build_features(df, window_days=7):
     """Batch 7-day windows or machine/shift groups into feature vectors."""
-    d = df.copy()
-    d["window"] = d["timestamp"].dt.floor(f"{window_days}D")
-    min_g = 1 if len(d) < 50 else 5
+    window = df["timestamp"].dt.floor(f"{window_days}D")
+    min_g = 1 if len(df) < 50 else 5
     rows = []
-    for (w, mach, shift), g in d.groupby(["window", "machine_id", "shift"]):
-        if len(g) < min_g:
-            continue
-        rows.append({
-            "window": str(w.date()),
-            "machine_id": mach,
-            "shift": shift,
-            "defect_rate": g["defect_count"].sum() / max(1, g["units_inspected"].sum()),
-            "temperature": g["temperature"].mean() if "temperature" in g else 25.0,
-            "pressure": g["pressure"].mean() if "pressure" in g else 1.0,
-            "speed": g["speed"].mean() if "speed" in g else 100.0,
-            "vibration": g["vibration"].mean() if "vibration" in g else 0.5,
-            "humidity": g["humidity"].mean() if "humidity" in g else 50.0,
-            "units": int(g["units_inspected"].sum()),
-            "defects": int(g["defect_count"].sum()),
-        })
-    return pd.DataFrame(rows)
+    
+    # Precompute defect rate, etc by grouping
+    g_agg = df.groupby([window, "machine_id", "shift"]).agg(
+        units_inspected=("units_inspected", "sum"),
+        defect_count=("defect_count", "sum"),
+        temperature=("temperature", "mean") if "temperature" in df.columns else ("units_inspected", lambda x: 25.0),
+        pressure=("pressure", "mean") if "pressure" in df.columns else ("units_inspected", lambda x: 1.0),
+        speed=("speed", "mean") if "speed" in df.columns else ("units_inspected", lambda x: 100.0),
+        vibration=("vibration", "mean") if "vibration" in df.columns else ("units_inspected", lambda x: 0.5),
+        humidity=("humidity", "mean") if "humidity" in df.columns else ("units_inspected", lambda x: 50.0),
+        count=("units_inspected", "size")
+    ).reset_index()
+    
+    # Filter small groups
+    g_agg = g_agg[g_agg["count"] >= min_g].copy()
+    
+    g_agg["defect_rate"] = g_agg["defect_count"] / g_agg["units_inspected"].clip(lower=1)
+    g_agg["window"] = g_agg["timestamp"].dt.date.astype(str)
+    
+    # Ensure columns match expected
+    g_agg = g_agg.rename(columns={"units_inspected": "units", "defect_count": "defects"})
+    
+    return g_agg
 
 
-def cluster_kmeans(df, k_range=(3, 5)):
+def _get_shared_features(df):
+    """Helper to return feature matrix and PCA projection so we can share it."""
     feat = _build_features(df)
     if len(feat) < 3:
-        return None
+        return None, None, None, None
     X = feat[NUM_FEATURES].to_numpy()
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
+    
+    pca = PCA(n_components=2, random_state=42)
+    proj = pca.fit_transform(Xs)
+    feat["pc1"] = proj[:, 0]
+    feat["pc2"] = proj[:, 1]
+    
+    return feat, Xs, proj, pca
+
+
+def cluster_kmeans(df=None, precomputed=None, k_range=(3, 5)):
+    if precomputed is not None:
+        feat, Xs, proj, pca = precomputed
+    else:
+        res = _get_shared_features(df)
+        if res[0] is None:
+            return None
+        feat, Xs, proj, pca = res
 
     best_k, best_sil = 3, -1
     sils = {}
@@ -62,17 +85,13 @@ def cluster_kmeans(df, k_range=(3, 5)):
     km = KMeans(n_clusters=best_k, n_init=10, random_state=42)
     labels = km.fit_predict(Xs)
     feat["cluster"] = labels
-    centroids = km.cluster_centers_
-
-    pca = PCA(n_components=2, random_state=42)
-    proj = pca.fit_transform(Xs)
-    feat["pc1"] = proj[:, 0]
-    feat["pc2"] = proj[:, 1]
 
     global_means = feat[NUM_FEATURES].mean().to_dict()
     profiles = []
     for c in range(best_k):
         cg = feat[feat["cluster"] == c]
+        if len(cg) == 0:
+            continue
         dr = float(cg["defect_rate"].mean())
         gdr = float(global_means["defect_rate"])
         prof = {
@@ -118,19 +137,23 @@ def cluster_kmeans(df, k_range=(3, 5)):
     }
 
 
-def cluster_dbscan(df, eps=0.9, min_samples=5):
+def cluster_dbscan(df=None, precomputed=None, eps=0.9, min_samples=5):
     """Secondary anomaly-cluster view."""
-    feat = _build_features(df)
-    if len(feat) < 15:
-        return None
-    scaler = StandardScaler()
-    Xs = scaler.fit_transform(feat[NUM_FEATURES].to_numpy())
+    if precomputed is not None:
+        feat, Xs, proj, pca = precomputed
+        if feat is None or len(feat) < 15:
+            return None
+    else:
+        res = _get_shared_features(df)
+        if res[0] is None or len(res[0]) < 15:
+            return None
+        feat, Xs, proj, pca = res
+        
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(Xs)
     labels = db.labels_
     n_noise = int((labels == -1).sum())
     feat["cluster"] = labels
-    pca = PCA(n_components=2, random_state=42)
-    proj = pca.fit_transform(Xs)
+    
     points = []
     for i, (_, r) in enumerate(feat.iterrows()):
         points.append({
@@ -148,3 +171,12 @@ def cluster_dbscan(df, eps=0.9, min_samples=5):
         "eps": eps,
         "points": points,
     }
+
+def cluster_both(df):
+    """Helper to run both clustering models sharing the same feature matrix."""
+    precomputed = _get_shared_features(df)
+    if precomputed[0] is None:
+        return None, None
+    km = cluster_kmeans(precomputed=precomputed)
+    db = cluster_dbscan(precomputed=precomputed)
+    return km, db

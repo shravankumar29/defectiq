@@ -101,6 +101,30 @@ def results():
     return r
 
 
+@app.get("/patterns")
+def get_patterns():
+    try:
+        return engine_api.get_patterns_lazy()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/clustering")
+def get_clustering():
+    try:
+        return engine_api.get_clustering_lazy()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/investigation/{defect_type}")
+def get_investigation(defect_type: str):
+    try:
+        return engine_api.get_investigation_lazy(defect_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @app.post("/copilot")
 def copilot(req: ChatReq):
     _check(req.secret)
@@ -126,4 +150,4 @@ def report_csv():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8901)
+    uvicorn.run(app, host="0.0.0.0", port=8901)

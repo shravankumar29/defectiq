@@ -66,6 +66,33 @@ export function engineRouter(): express.Router {
     }
   });
 
+  router.get("/patterns", async (_req, res) => {
+    try {
+      const data = await relay("/patterns");
+      res.json({ ok: true, data });
+    } catch (e) {
+      res.status(404).json({ ok: false, error: String(e) });
+    }
+  });
+
+  router.get("/clustering", async (_req, res) => {
+    try {
+      const data = await relay("/clustering");
+      res.json({ ok: true, data });
+    } catch (e) {
+      res.status(404).json({ ok: false, error: String(e) });
+    }
+  });
+
+  router.get("/investigation/:defectType", async (req, res) => {
+    try {
+      const data = await relay(`/investigation/${encodeURIComponent(req.params.defectType)}`);
+      res.json({ ok: true, data });
+    } catch (e) {
+      res.status(404).json({ ok: false, error: String(e) });
+    }
+  });
+
   router.post("/copilot", async (req, res) => {
     try {
       const data = await relay("/copilot", {

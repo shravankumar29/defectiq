@@ -30,19 +30,12 @@ export default function Spline3DHero({
   };
 
   return (
-    <div className={`absolute inset-0 z-0 overflow-hidden pointer-events-auto ${className}`}>
-      {/* 
-        Responsive layout for the 3D element:
-        - Mobile: Full width, positioned towards the bottom.
-        - Tablet: 80% width, aligned right.
-        - Desktop: 60% width, right-aligned, centered vertically.
-        The container has a mask-image to create a smooth fade at the bottom.
-      */}
+    <div className={`relative w-[110%] -ml-[5%] md:w-[120%] md:-ml-[10%] h-full z-0 overflow-visible pointer-events-auto ${className}`}>
       <div 
-        className={`absolute w-full h-[60vh] bottom-0 left-0 md:w-[80%] md:h-[80vh] md:top-[10vh] md:left-auto md:right-[-5%] lg:w-[60%] lg:h-[90vh] lg:top-[5vh] lg:right-[2%] flex items-center justify-center transition-all duration-700 ease-out ${isHovering ? "scale-[1.02] brightness-110" : "scale-100 brightness-100"}`}
+        className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-out translate-x-2 md:translate-x-6 lg:translate-x-10 -translate-y-2 md:-translate-y-6 lg:-translate-y-10 scale-[1.0] md:scale-[1.15] lg:scale-[1.18] ${isHovering ? "brightness-110 scale-[1.02] md:scale-[1.18] lg:scale-[1.21]" : "brightness-100"}`}
         style={{
-          WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%)",
-          maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%)"
+          WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)",
+          maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)"
         }}
       >
         

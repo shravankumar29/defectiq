@@ -10,22 +10,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useMemo, useState } from "react";
 import withDataset from "@/components/withDataset";
+import { trpc } from "@/lib/trpc";
+import { Loader2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
 function DefectInvestigationPage({ results }: { results: any; uploadCsv?: any }) {
   const defectTypes = (results.defect_types as string[]) ?? [];
-  const contribution = (results.contribution ?? {}) as Record<string, { factors: Row[] }>;
-  const mi = (results.mutual_information ?? {}) as Record<string, Row[]>;
-  const trees = (results.decision_tree ?? {}) as Record<string, any>;
-  const evidence = (results.evidence ?? {}) as Record<string, any>;
-  const patterns = (results.patterns as Row[]) ?? [];
-
   const [type, setType] = useState(defectTypes[0] ?? "");
 
-  const ranking = contribution[type]?.factors ?? [];
-  const miRanking = mi[type] ?? [];
-  const tree = trees[type];
+  const { data: invData, isLoading: invLoading } = trpc.engine.investigation.useQuery(
+    { defect_type: type },
+    { enabled: !!type, staleTime: Infinity }
+  );
+  const { data: patData } = trpc.engine.patterns.useQuery(undefined, { staleTime: Infinity });
+
+  const contribution = (invData as any)?.contribution ?? {};
+  const mi = (invData as any)?.mutual_information ?? {};
+  const tree = (invData as any)?.decision_tree;
+  const evidence = (patData as any)?.evidence ?? {};
+  const patterns = (patData as any)?.patterns ?? [];
+
+  const ranking = contribution?.factors ?? [];
+  const miRanking = mi ?? [];
 
   const topFactors = useMemo(() => {
     const evs: any[] = [];
@@ -59,6 +66,7 @@ function DefectInvestigationPage({ results }: { results: any; uploadCsv?: any })
             ))}
           </SelectContent>
         </Select>
+        {invLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         {tree ? (
           <span className="text-xs text-muted-foreground">
             Decision tree: max depth {Number(tree?.max_depth ?? 3)} · {Number((tree?.top_splits as any[])?.length ?? 0)} top splits

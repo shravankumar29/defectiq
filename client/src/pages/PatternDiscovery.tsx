@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { AlertTriangle, ArrowUpDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import withDataset from "@/components/withDataset";
+import { trpc } from "@/lib/trpc";
+import { Loader2 } from "lucide-react";
 
 type Pattern = Record<string, unknown>;
 
@@ -34,9 +36,15 @@ function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const patterns = (results.patterns as Pattern[]) ?? [];
-  const evidence = (results.evidence ?? {}) as Record<string, any>;
+  const { data: patternsData, isLoading } = trpc.engine.patterns.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+
+  const patterns = (patternsData as any)?.patterns ?? [];
+  const evidence = (patternsData as any)?.evidence ?? {};
   const defectTypes = (results.defect_types as string[]) ?? [];
+
+
 
   const sorted = useMemo(() => {
     let list = patterns.filter((p) => {
@@ -69,6 +77,15 @@ function PatternDiscoveryPage({ results }: { results: any; uploadCsv?: any }) {
       setSortKey(key);
       setSortAsc(key === "p_value");
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-4 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p>Mining multi-factor patterns...</p>
+      </div>
+    );
   }
 
   return (

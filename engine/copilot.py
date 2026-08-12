@@ -22,7 +22,7 @@ association is not causation. After your answer, list which pattern/evidence
 IDs or data sections you used, prefixed by 'Sources:'."""
 
 
-def build_analysis_context(overview, patterns, change_points, recommendations, defect_types, kpis):
+def build_analysis_context(overview, patterns, change_points, recommendations, defect_types, kpis, machine_analysis=None, shift_analysis=None):
     return {
         "dataset": {
             "total_inspections": kpis["total_inspections"],
@@ -36,6 +36,8 @@ def build_analysis_context(overview, patterns, change_points, recommendations, d
             "highest_risk_shift": kpis["highest_risk_shift"],
             "active_alerts": kpis["active_alerts"],
         },
+        "machine_analysis": machine_analysis,
+        "shift_analysis": shift_analysis,
         "top_patterns": [
             {
                 "pattern_id": p["pattern_id"],

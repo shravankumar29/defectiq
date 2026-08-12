@@ -475,46 +475,55 @@ export default function Landing() {
       {/* ========================================================== */}
       {/* HERO                                                        */}
       {/* ========================================================== */}
-      <section id="top" className="relative flex min-h-screen items-center overflow-hidden">
-        <Spline3DHero 
-          sceneUrl="https://prod.spline.design/dzwVweTh0XfFxn7p/scene.splinecode" 
-          uploadState={uploadState}
-          isHovering={isHoveringImport}
-        />
-        <div className="relative z-10 mx-auto w-full max-w-6xl px-6 pb-28 pt-40 pointer-events-auto">
-          <p className="lp-fade-up font-data mb-8 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
-            AI-Powered Manufacturing Intelligence
-          </p>
-          <h1 className="lp-fade-up font-display text-[2.75rem] font-light leading-[1.08] tracking-tight text-white sm:text-6xl md:text-[5.5rem] md:leading-[1.02]">
-            Manufacturing Data.
-            <br />
-            <span className="lp-text-glow text-cyan-200/95">Decoded.</span>
-          </h1>
-          <p className="lp-fade-up mt-8 max-w-md text-base font-light leading-relaxed text-white/55">
-            Upload factory inspection data and uncover recurring defect patterns across machines, batches, shifts, and process conditions.
-          </p>
-          <div className="lp-fade-up mt-12 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-            <button
-              onClick={openImport}
-              onMouseEnter={() => setIsHoveringImport(true)}
-              onMouseLeave={() => setIsHoveringImport(false)}
-              className="group flex items-center gap-3 rounded-full border border-cyan-400/30 bg-cyan-400/[0.10] px-7 py-3.5 text-[14px] font-light tracking-wide text-cyan-100 transition-all hover:bg-cyan-400/20 active:scale-[0.97]"
-            >
-              <UploadCloud className="h-4 w-4" strokeWidth={1.5} />
-              Import CSV / Excel
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" strokeWidth={1.5} />
-            </button>
-            <Link
-              href="/app"
-              className="flex items-center gap-2 rounded-full border border-white/12 px-7 py-3.5 text-[14px] font-light tracking-wide text-white/70 transition-all hover:border-white/25 hover:text-white active:scale-[0.97]"
-            >
-              <FlaskConical className="h-4 w-4" strokeWidth={1.5} />
-              Explore Demo
-            </Link>
+      <section id="top" className="relative flex min-h-screen items-center overflow-hidden pt-32 pb-20">
+        <div className="relative z-10 mx-auto w-full max-w-[85rem] px-6 lg:px-12 flex flex-col md:flex-row items-center justify-between gap-8 md:gap-4 pointer-events-auto">
+          
+          {/* LEFT COLUMN: TEXT (55%) */}
+          <div className="w-full md:w-[52%] lg:w-[55%] flex-shrink-0 relative z-20 text-left pt-10 md:pt-0">
+            <p className="lp-fade-up font-data mb-8 text-[11px] uppercase tracking-[0.4em] text-cyan-300/80">
+              AI-Powered Manufacturing Intelligence
+            </p>
+            <h1 className="lp-fade-up font-display text-[2.75rem] font-light leading-[1.08] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-[5.5rem] lg:leading-[1.02]">
+              Manufacturing Data.
+              <br />
+              <span className="lp-text-glow text-cyan-200/95">Decoded.</span>
+            </h1>
+            <p className="lp-fade-up mt-8 max-w-md text-base font-light leading-relaxed text-white/55">
+              Upload factory inspection data and uncover recurring defect patterns across machines, batches, shifts, and process conditions.
+            </p>
+            <div className="lp-fade-up mt-12 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+              <button
+                onClick={openImport}
+                onMouseEnter={() => setIsHoveringImport(true)}
+                onMouseLeave={() => setIsHoveringImport(false)}
+                className="group flex items-center gap-3 rounded-full border border-cyan-400/30 bg-cyan-400/[0.10] px-7 py-3.5 text-[14px] font-light tracking-wide text-cyan-100 transition-all hover:bg-cyan-400/20 active:scale-[0.97]"
+              >
+                <UploadCloud className="h-4 w-4" strokeWidth={1.5} />
+                Import CSV / Excel
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" strokeWidth={1.5} />
+              </button>
+              <Link
+                href="/app"
+                className="flex items-center gap-2 rounded-full border border-white/12 px-7 py-3.5 text-[14px] font-light tracking-wide text-white/70 transition-all hover:border-white/25 hover:text-white active:scale-[0.97]"
+              >
+                <FlaskConical className="h-4 w-4" strokeWidth={1.5} />
+                Explore Demo
+              </Link>
+            </div>
+            <p className="lp-fade-up mt-5 font-data text-[11px] tracking-[0.25em] text-white/35">
+              CSV • XLSX • AI-assisted column mapping
+            </p>
           </div>
-          <p className="lp-fade-up mt-5 font-data text-[11px] tracking-[0.25em] text-white/35">
-            CSV • XLSX • AI-assisted column mapping
-          </p>
+
+          {/* RIGHT COLUMN: ROBOT (48%) */}
+          <div className="w-full md:w-[48%] lg:w-[48%] aspect-square md:aspect-auto md:h-[70vh] lg:h-[85vh] relative z-10 flex-shrink-0 mt-8 md:mt-0">
+            <Spline3DHero 
+              sceneUrl="https://prod.spline.design/dzwVweTh0XfFxn7p/scene.splinecode" 
+              uploadState={uploadState}
+              isHovering={isHoveringImport}
+            />
+          </div>
+
         </div>
         <div className="pointer-events-none absolute bottom-10 left-1/2 z-10 -translate-x-1/2">
           <ArrowDown className="h-5 w-5 animate-bounce text-white/30" strokeWidth={1.2} />

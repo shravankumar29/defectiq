@@ -12,14 +12,30 @@ import {
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 import withDataset from "@/components/withDataset";
+import { trpc } from "@/lib/trpc";
+import { Loader2 } from "lucide-react";
 
 const PRIORITY_ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
 type Rec = Record<string, unknown>;
 
 function RecommendationsPage({ results }: { results: any; uploadCsv?: any }) {
-  const recs = (results.recommendations as Rec[]) ?? [];
+  const { data: patternsData, isLoading } = trpc.engine.patterns.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+
+  const recs = (patternsData as any)?.recommendations ?? [];
+  const evidence = (patternsData as any)?.evidence ?? {};
   const [openId, setOpenId] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-4 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p>Generating recommendations...</p>
+      </div>
+    );
+  }
 
   const sorted = [...recs].sort(
     (a, b) => (PRIORITY_ORDER as Record<string, number>)[String(a.priority)] - (PRIORITY_ORDER as Record<string, number>)[String(b.priority)]
@@ -38,7 +54,7 @@ function RecommendationsPage({ results }: { results: any; uploadCsv?: any }) {
 
       <div className="space-y-3">
         {sorted.map((r, i) => {
-          const ev = results.evidence?.[String(r.pattern_id ?? i)] as any;
+          const ev = evidence?.[String(r.pattern_id ?? i)] as any;
           return (
             <Card key={i} className="border-border/70">
               <CardContent className="flex items-start gap-4 pt-5">

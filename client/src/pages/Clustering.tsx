@@ -17,6 +17,8 @@ import {
   ZAxis,
 } from "recharts";
 import withDataset from "@/components/withDataset";
+import { trpc } from "@/lib/trpc";
+import { Loader2 } from "lucide-react";
 
 const CLUSTER_COLORS = [
   "oklch(0.68 0.14 220)",
@@ -54,8 +56,21 @@ function ClusterScatter({ scatter }: { scatter: Row[] }) {
 }
 
 function ClusteringPage({ results }: { results: any; uploadCsv?: any }) {
-  const kmeans = (results.clustering_kmeans ?? {}) as Record<string, any>;
-  const dbscan = (results.clustering_dbscan ?? {}) as Record<string, any>;
+  const { data: clusteringData, isLoading } = trpc.engine.clustering.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+
+  const kmeans = (clusteringData as any)?.clustering_kmeans ?? {};
+  const dbscan = (clusteringData as any)?.clustering_dbscan ?? {};
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-4 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p>Running unsupervised clustering...</p>
+      </div>
+    );
+  }
 
   const k = Number(kmeans.best_k ?? 3);
   // silhouette_scores is a map like {3: score, 4: score, 5: score}

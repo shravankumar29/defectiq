@@ -25,7 +25,9 @@ function Router() {
     <AnalysisProvider>
       <Switch>
         {/* Public cinematic landing page */}
-        <Route path={"/"} component={Landing} />
+        <Route path={"/"}>
+          <AppShell><Landing /></AppShell>
+        </Route>
 
         {/* App workspace sub-pages */}
         <Route path={"/app"}>

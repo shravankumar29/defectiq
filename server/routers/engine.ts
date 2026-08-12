@@ -54,6 +54,14 @@ export const engineRouter = router({
 
   results: publicProcedure.query(() => relayJson("/results")),
 
+  patterns: publicProcedure.query(() => relayJson("/patterns")),
+
+  clustering: publicProcedure.query(() => relayJson("/clustering")),
+
+  investigation: publicProcedure
+    .input(z.object({ defect_type: z.string().min(1) }))
+    .query(({ input }) => relayJson(`/investigation/${encodeURIComponent(input.defect_type)}`)),
+
   copilot: publicProcedure
     .input(z.object({ question: z.string().min(1).max(2000) }))
     .mutation(({ input }) => relayJson("/copilot", { method: "POST", body: { question: input.question } })),
